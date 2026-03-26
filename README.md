@@ -1,6 +1,6 @@
 # Today — Desk Calendar
 
-A minimal PWA that turns your phone into an always-on desk calendar. Connects to Google Calendar and shows today's events with live countdowns, color-coded by urgency.
+A minimal PWA that turns your phone into an always-on desk calendar. Connects to Google Calendar and shows today's events with live countdowns, color-coded urgency, overlapping meeting columns, and playful animations.
 
 **Live app:** [https://howdymoto.github.io/Calendar/](https://howdymoto.github.io/Calendar/)
 
@@ -8,12 +8,18 @@ A minimal PWA that turns your phone into an always-on desk calendar. Connects to
 
 - **Live countdowns** — events shift from calm to urgent as they approach
 - **All-day events** — shown as compact chips pinned to the top
-- **Current meeting highlight** — glowing card with subtle pulse so you always know what's happening now
+- **Current meeting progress** — the card fills left-to-right as the meeting progresses
+- **Wrapping-up nudge** — warm amber glow when 5 minutes remain in the current meeting
+- **Meeting done celebration** — a delightful animation when a meeting ends
+- **Overlapping meetings** — displayed side-by-side with staggered start times
+- **Bounce animations** — upcoming events bounce with increasing urgency; tap to dismiss with a 3D press effect
+- **Pull-to-refresh** — pull down to refresh events
 - **Auto-refresh** — pulls new events every 5 minutes, resets at midnight
 - **Screen wake lock** — keeps the display on while charging
 - **PWA** — installs to your home screen, runs fullscreen with no browser chrome
 - **Adjustable display size** — scale the UI up or down for your device
 - **Color palettes** — choose your urgency color or use calendar colors
+- **Google-branded sign-in** — properly branded OAuth button
 - **Demo mode** — works out of the box with sample data (no Google account needed)
 
 ## Quick Start

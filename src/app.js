@@ -88,6 +88,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // Keys are event IDs (summary + start time), values are Sets of fired thresholds
 const firedMilestones = new Map();
 const dismissedEvents = new Set();
+const previousStates = new Set(); // event keys that were 'current' last render
+const ONE_SHOT_ANIM_CLASSES = ['throb-small', 'throb-medium', 'throb-large', 'meeting-done'];
 
 function eventKey(event) {
   const t = event.start.dateTime || event.start.date;
@@ -108,15 +110,30 @@ function checkMilestone(key, minsUntil) {
   return newMilestone;
 }
 
-function dismissEvent(key) {
+function dismissEvent(key, e) {
   dismissedEvents.add(key);
   const card = document.querySelector(`[data-dismiss="${CSS.escape(key)}"]`);
   if (card) {
     card.classList.remove('antsy');
-    // Force reflow so the new animation starts fresh
-    void card.offsetWidth;
+
+    if (e) {
+      const rect = card.getBoundingClientRect();
+      const xPct = (e.clientX - rect.left) / rect.width * 2 - 1;
+      const yPct = (e.clientY - rect.top) / rect.height * 2 - 1;
+      card.style.setProperty('--tilt-x', `${yPct * -18}deg`);
+      card.style.setProperty('--tilt-y', `${xPct * 18}deg`);
+    }
+
     card.classList.add('tickled');
-    card.addEventListener('animationend', () => renderEvents(), { once: true });
+    const fallback = setTimeout(() => renderEvents(), 500);
+    card.addEventListener('transitionend', () => {
+      card.classList.remove('tickled');
+      card.classList.add('tickled-out');
+      card.addEventListener('transitionend', () => {
+        clearTimeout(fallback);
+        renderEvents();
+      }, { once: true });
+    }, { once: true });
   } else {
     renderEvents();
   }
@@ -605,6 +622,9 @@ function renderEvents() {
 
     if (now >= end) {
       state = 'past';
+      if (previousStates.has(key)) {
+        animClass = ' meeting-done';
+      }
     } else if (now >= start && now < end) {
       state = 'current';
       if (!nextUpId) nextUpId = `ev-${i}`;
@@ -666,7 +686,7 @@ function renderEvents() {
     const bounceDelay = animClass ? `animation-delay: ${(bounceCount++ * 0.4).toFixed(1)}s;` : '';
     const allStyles = spacingStyle + cardStyle + progressStyle + bounceDelay;
     const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
-    const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${key}"` : '';
+    const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${escapeHtml(key)}"` : '';
 
     const avatarPerson = pickAvatarPerson(event);
     const avatarName = avatarPerson.displayName || avatarPerson.email || '';
@@ -697,6 +717,7 @@ function renderEvents() {
       }
     }
 
+    if (state === 'current') previousStates.add(key); else previousStates.delete(key);
     structureKey += `${i}:${state}${animClass}:${opts.grouped ? 'g' + opts.clusterIdx : 's'}|`;
 
     return `
@@ -708,8 +729,8 @@ function renderEvents() {
           </div>` : ''}
           <div class="card-main">
             <div class="event-title"${titleColor}>${escapeHtml(event.summary || '(No title)')}</div>
-            <div class="event-time"${timeColor}>${startTimeStr}${countdown && state === 'current' ? ` · ${countdown}` : ''}</div>
           </div>
+          <div class="event-time"${timeColor}>${startTimeStr}${countdown && state === 'current' ? ` · ${countdown}` : ''}</div>
         </div>
         <div class="card-details">${details.join('')}</div>
       </div>
@@ -770,15 +791,16 @@ function renderEvents() {
       el.addEventListener('click', (e) => {
         if (el.classList.contains('antsy')) {
           e.stopImmediatePropagation();
-          dismissEvent(el.dataset.dismiss);
+          dismissEvent(el.dataset.dismiss, e);
         }
       });
     });
 
     // Remove one-shot animation classes after they play
-    list.querySelectorAll('.throb-small, .throb-medium, .throb-large').forEach(el => {
+    const animSelector = ONE_SHOT_ANIM_CLASSES.map(c => '.' + c).join(', ');
+    list.querySelectorAll(animSelector).forEach(el => {
       el.addEventListener('animationend', () => {
-        el.classList.remove('throb-small', 'throb-medium', 'throb-large');
+        el.classList.remove(...ONE_SHOT_ANIM_CLASSES);
       }, { once: true });
     });
 
@@ -907,6 +929,7 @@ function scheduleMidnightRefresh() {
   setTimeout(() => {
     firedMilestones.clear();
     dismissedEvents.clear();
+    previousStates.clear();
     fetchEvents();
     scheduleMidnightRefresh();
   }, msUntilMidnight + 1000);
