@@ -186,8 +186,14 @@ async function fetchPhotos(emails) {
   missing = uncached.filter(e => !photoCache[e]);
   if (missing.length) await fetchPhotosFromDirectory(missing);
 
+  // Log results
+  const found = uncached.filter(e => photoCache[e]);
+  const notFound = uncached.filter(e => !photoCache[e]);
+  if (found.length) console.log('[photos] found:', found);
+  if (notFound.length) console.log('[photos] not found:', notFound);
+
   // Re-render if any photos were found
-  if (uncached.some(e => photoCache[e])) {
+  if (found.length) {
     lastStructureKey = '';
     renderEvents();
   }
@@ -204,7 +210,9 @@ async function fetchPhotosFromContacts(emails) {
       const person = resp.result.results?.[0]?.person;
       const photo = person?.photos?.find(p => !p.default)?.url;
       if (photo) photoCache[email] = photo;
-    } catch (e) {}
+    } catch (e) {
+      console.warn(`[photos] contacts lookup failed for ${email}:`, e);
+    }
   });
   await Promise.all(fetches);
 }
@@ -235,7 +243,7 @@ async function fetchPhotosFromOtherContacts(emails) {
       // Stop if we found everyone or there are no more pages
     } while (pageToken && emailSet.size > 0);
   } catch (e) {
-    // contacts.other.readonly not granted or API error
+    console.warn('[photos] otherContacts lookup failed:', e);
   }
 }
 
@@ -251,7 +259,9 @@ async function fetchPhotosFromDirectory(emails) {
       const person = resp.result.people?.[0];
       const photo = person?.photos?.find(p => !p.default)?.url;
       if (photo) photoCache[email] = photo;
-    } catch (e) {}
+    } catch (e) {
+      console.warn(`[photos] directory lookup failed for ${email}:`, e);
+    }
   });
   await Promise.all(fetches);
 }
