@@ -170,8 +170,8 @@ html, body {
 .all-day-chip {
   background: var(--accent-glow);
   color: var(--text-dim);
-  font-size: 0.75em;
-  padding: 0.3em 0.7em;
+  font-size: 1em;
+  padding: 0.4em 0.9em;
   border-radius: var(--radius);
   white-space: nowrap;
   overflow: hidden;
