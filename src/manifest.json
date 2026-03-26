@@ -4,7 +4,7 @@
   "description": "Minimal desk calendar display for your day",
   "start_url": ".",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#0a0a0f",
   "theme_color": "#0a0a0f",
   "icons": [

@@ -16,12 +16,20 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Network-first for API calls, cache-first for assets
+  // Always go to network for API calls
   if (e.request.url.includes('googleapis.com')) {
     e.respondWith(fetch(e.request));
-  } else {
-    e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request))
-    );
+    return;
   }
+
+  // Network-first for app assets, fall back to cache when offline
+  e.respondWith(
+    fetch(e.request)
+      .then(response => {
+        const clone = response.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(e.request))
+  );
 });

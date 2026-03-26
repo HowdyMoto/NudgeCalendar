@@ -9,60 +9,65 @@
 4. Create OAuth credentials:
    - APIs & Services → Credentials → Create Credentials → OAuth client ID
    - Application type: **Web application**
-   - Authorized JavaScript origins: add your hosting URL (e.g. `https://yourdomain.com` or `http://localhost:8080` for testing)
+   - Authorized JavaScript origins: add your hosting URL (e.g. `https://yourdomain.github.io` or `http://localhost:8080` for testing)
    - Authorized redirect URIs: same as above
 5. Copy the **Client ID**
 
 ## 2. Configure the App
 
-Open `app.js` and replace `YOUR_CLIENT_ID.apps.googleusercontent.com` with your actual Client ID.
+Create a `.env` file in the project root:
 
-## 3. Host the App
-
-This must be served over HTTPS (required for Google OAuth and PWA).
-
-**For local testing:**
-```bash
-# Python
-python -m http.server 8080
-
-# Node
-npx serve -p 8080
+```
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 ```
 
-**For production**, deploy to any static host:
-- GitHub Pages
-- Netlify
-- Vercel
-- Cloudflare Pages
+The build step injects this into the app automatically.
 
-## 4. Generate App Icons
+## 3. Build & Run
 
-1. Open `generate-icons.html` in a browser
-2. Right-click each canvas → Save Image As:
-   - 192×192 → `icon-192.png`
-   - 512×512 → `icon-512.png`
-3. You can delete `generate-icons.html` after
+```bash
+npm install
+npm run dev    # Dev server with auto-rebuild at http://localhost:8080
+npm run build  # Production build to dist/
+```
 
-## 5. Install on iPhone
+## 4. Deploy
 
+The app deploys automatically to GitHub Pages via GitHub Actions on push to `master`.
+
+To set up deployment for your own fork:
+
+1. Go to your repo → Settings → Secrets and variables → Actions
+2. Add a repository secret: `GOOGLE_CLIENT_ID` with your client ID
+3. Go to Settings → Pages → Source: **GitHub Actions**
+4. Push to `master` — the Action builds and deploys to `https://<username>.github.io/Calendar/`
+
+You can also deploy `dist/` to any static host (Netlify, Vercel, Cloudflare Pages). HTTPS is required for Google OAuth and PWA features.
+
+## 5. Install on Your Phone
+
+### iPhone
 1. Open the hosted URL in Safari
-2. Tap the Share button (box with arrow)
-3. Tap **"Add to Home Screen"**
-4. The app will now launch fullscreen (no browser chrome)
+2. Tap the Share button → **"Add to Home Screen"**
+3. The app launches fullscreen with no browser chrome
 
-## 6. MagSafe Always-On Display
+### Android
+1. Open the hosted URL in Chrome
+2. Tap the menu → **"Add to Home Screen"** (or accept the install prompt)
 
-iOS doesn't have a native "launch app when charging" feature, but you can use **Shortcuts automation**:
+## 6. Always-On Desk Display
 
-1. Open the **Shortcuts** app
-2. Go to **Automation** tab
-3. Tap **+** → **Create Personal Automation**
-4. Select **Charger** → **Is Connected** → Next
-5. Add action: **Open App** → choose Safari (or the "Today" home screen shortcut)
-6. Turn off "Ask Before Running"
-7. Done
+### Android
+Enable **Developer Options** → **Stay awake** — the screen stays on while charging. Place your phone on a stand or charger.
 
-Now whenever your iPhone connects to the MagSafe charger, it will automatically open the calendar app.
+### iPhone
+iOS doesn't have a native "stay awake while charging" option, but you can:
 
-**Tip:** Also set Auto-Lock to **Never** (Settings → Display & Brightness → Auto-Lock) while using as a desk display — or at least set it to a long duration.
+1. Set Auto-Lock to **Never** (Settings → Display & Brightness → Auto-Lock) while using as a desk display
+2. Optionally, use **Shortcuts automation** to auto-launch the app when charging:
+   - Open **Shortcuts** → **Automation** tab → **+**
+   - Select **Charger** → **Is Connected** → Next
+   - Add action: **Open App** → choose the "Today" home screen app
+   - Turn off "Ask Before Running"
+
+Now whenever your iPhone connects to a charger, it automatically opens the calendar.
