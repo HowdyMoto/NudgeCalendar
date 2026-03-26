@@ -82,6 +82,11 @@ html, body {
 #calendar-screen {
   padding: var(--safe-top) max(16px, var(--safe-right)) var(--safe-bottom) max(16px, var(--safe-left));
 }
+@media (min-width: 768px) {
+  #calendar-screen {
+    padding: 24px 48px;
+  }
+}
 
 #date-header {
   font-size: 1.1em;
@@ -115,6 +120,30 @@ html, body {
   -ms-overflow-style: none;
 }
 #events-list::-webkit-scrollbar { display: none; }
+
+/* ── Pull-to-refresh indicator ───────────────────────── */
+.pull-indicator {
+  text-align: center;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--text-faint);
+  opacity: 0;
+  transform: translateY(0);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  pointer-events: none;
+  height: 0;
+  overflow: visible;
+}
+.pull-indicator.ready {
+  color: var(--text-dim);
+}
+.pull-indicator.refreshing {
+  animation: spin-text 0.8s linear infinite;
+}
+@keyframes spin-text {
+  0% { transform: translateY(40px) rotate(0deg); }
+  100% { transform: translateY(40px) rotate(360deg); }
+}
 
 #empty-state {
   flex: 1;
@@ -272,28 +301,23 @@ html, body {
 
 /* ── Current / in-progress ───────────────────────────── */
 .event-card.current {
-  background: rgba(255, 255, 255, 0.12);
-  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.06);
+  border: 4px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.06);
+}
+.event-card.current::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--progress, 0%);
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: inherit;
+  transition: width 10s linear;
+  pointer-events: none;
 }
 .event-card.current .event-title { color: #ffffff; }
 .event-card.current .event-time  { color: rgba(255, 255, 255, 0.7); }
 .event-card.current .event-location { color: rgba(255, 255, 255, 0.5); }
-
-/* ── Progress bar inside current meeting card ─────────── */
-.current-progress {
-  margin-top: 0.5em;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.current-progress-fill {
-  height: 100%;
-  background: rgba(255, 255, 255, 0.45);
-  border-radius: 2px;
-  transition: width 10s linear;
-}
 
 /* ── Now line (in timeline gaps) ─────────────────────── */
 .now-line {
@@ -316,20 +340,30 @@ html, body {
   background: rgba(255, 255, 255, 0.6);
 }
 
-/* ── Overlap connector between concurrent meetings ──── */
-.overlap-connector {
+/* ── Overlap group (side-by-side columns) ────────────── */
+.overlap-group {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-  position: relative;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin-bottom: 0.5em;
+  align-items: flex-start;
 }
-.overlap-label {
-  font-size: 0.65em;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.35);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.overlap-group > .event-card {
+  flex: 1 1 calc(50% - 0.175em);
+  min-width: calc(50% - 0.175em);
+  max-width: calc(50% - 0.175em);
+  margin-bottom: 0;
+}
+.overlap-group > .event-card .organizer-avatar {
+  width: 1.6em;
+  height: 1.6em;
+  font-size: 0.55em;
+}
+.overlap-group > .event-card .event-title {
+  font-size: 0.9em;
+}
+.overlap-group > .event-card .event-time {
+  font-size: 0.68em;
 }
 
 /* ── Upcoming states ─────────────────────────────────── */
@@ -745,5 +779,9 @@ html, body {
   .event-card.throb-large,
   .event-card.antsy {
     margin-bottom: 10px;
+  }
+
+  .overlap-group > .event-card {
+    padding: 6px 8px;
   }
 }

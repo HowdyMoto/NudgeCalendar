@@ -35,6 +35,53 @@ document.addEventListener('DOMContentLoaded', () => {
       }, SCROLL_RETURN_DELAY);
     }, { passive: true });
   }
+
+  // ── Pull-to-refresh ──
+  const indicator = document.getElementById('pull-indicator');
+  let pullStartY = 0;
+  let pulling = false;
+  const PULL_THRESHOLD = 80;
+
+  list.addEventListener('touchstart', (e) => {
+    if (list.scrollTop <= 0) {
+      pullStartY = e.touches[0].clientY;
+      pulling = true;
+    }
+  }, { passive: true });
+
+  list.addEventListener('touchmove', (e) => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - pullStartY;
+    if (dy > 0 && list.scrollTop <= 0) {
+      const progress = Math.min(dy / PULL_THRESHOLD, 1);
+      indicator.style.transform = `translateY(${Math.min(dy * 0.5, 50)}px)`;
+      indicator.style.opacity = progress;
+      indicator.classList.toggle('ready', progress >= 1);
+    } else {
+      indicator.style.transform = '';
+      indicator.style.opacity = 0;
+    }
+  }, { passive: true });
+
+  list.addEventListener('touchend', () => {
+    if (!pulling) return;
+    pulling = false;
+    const wasReady = indicator.classList.contains('ready');
+    indicator.style.transform = '';
+    indicator.style.opacity = 0;
+    indicator.classList.remove('ready');
+    if (wasReady) {
+      indicator.classList.add('refreshing');
+      indicator.style.opacity = 1;
+      indicator.style.transform = 'translateY(40px)';
+      const refresh = DEMO_MODE ? loadDemoEvents : fetchEvents;
+      Promise.resolve(refresh()).finally(() => {
+        indicator.classList.remove('refreshing');
+        indicator.style.transform = '';
+        indicator.style.opacity = 0;
+      });
+    }
+  }, { passive: true });
 });
 
 // Milestone animation tracking
@@ -286,6 +333,35 @@ function gapMargin(gapMinutes) {
   return Math.min(140, Math.sqrt(gapMinutes) * 9);
 }
 
+// Group overlapping timed events into clusters for side-by-side rendering.
+// Returns array of { events: [...], isOverlapping, clusterStart, clusterEnd }.
+function buildOverlapClusters(timedEvents) {
+  const clusters = [];
+  let cluster = null;
+
+  for (const ev of timedEvents) {
+    const start = new Date(ev.start.dateTime).getTime();
+    const end = new Date(ev.end.dateTime).getTime();
+
+    if (!cluster || start >= cluster.clusterEnd) {
+      // Finalize previous cluster
+      if (cluster) clusters.push(cluster);
+      cluster = { events: [ev], clusterStart: start, clusterEnd: end };
+    } else {
+      // Overlaps with current cluster
+      cluster.events.push(ev);
+      cluster.clusterEnd = Math.max(cluster.clusterEnd, end);
+    }
+  }
+  if (cluster) clusters.push(cluster);
+
+  // Mark clusters with 2+ events as overlapping
+  for (const c of clusters) {
+    c.isOverlapping = c.events.length > 1;
+  }
+  return clusters;
+}
+
 // ── Color palettes ──────────────────────────────────────
 const COLOR_PALETTES = [
   { name: 'Ember',    hex: '#e8722a' },
@@ -497,48 +573,39 @@ function renderEvents() {
   }
 
   // ── Timed events ──
-  let currentCount = 0;
+  const timedEvents = events.filter(e => e.start.dateTime);
+  const clusters = buildOverlapClusters(timedEvents);
 
-  events.forEach((event, i) => {
-    const isAllDay = !event.start.dateTime;
-    if (isAllDay) return;
+  // Map each timed event back to its original index in `events` for stable IDs
+  const eventIndex = new Map();
+  events.forEach((e, i) => { if (e.start.dateTime) eventIndex.set(e, i); });
 
+  function renderCard(event, opts) {
+    const i = eventIndex.get(event);
     const start = new Date(event.start.dateTime);
     const end = new Date(event.end.dateTime);
 
-    // Determine state
     let state = '';
     let countdown = '';
     let animClass = '';
     let minsUntil = (start - now) / 60000;
     const key = eventKey(event);
-
     let progress = 0;
 
     if (now >= end) {
       state = 'past';
     } else if (now >= start && now < end) {
       state = 'current';
-      currentCount++;
       if (!nextUpId) nextUpId = `ev-${i}`;
       progress = (now - start) / (end - start);
       const minsLeft = (end - now) / 60000;
       countdown = `${Math.ceil(minsLeft)}m left`;
-      // Show overlap connector between concurrent meetings
-      if (currentCount > 1) {
-        html += `<div class="overlap-connector"><span class="overlap-label">overlapping</span></div>`;
-      }
     } else {
-      // Future event
       if (!nextUpId) nextUpId = `ev-${i}`;
       state = 'future';
       countdown = formatCountdown(start - now);
-
-      // Check for milestone one-shot animations
       const milestone = checkMilestone(key, minsUntil);
-
       if (minsUntil <= 3 && !dismissedEvents.has(key)) {
-        // Continuous throb until tapped
         animClass = ' antsy';
       } else if (milestone === 3) {
         animClass = ' throb-large';
@@ -549,33 +616,7 @@ function renderEvents() {
       }
     }
 
-    // ── Timeline connector: line + free time label between events ──
-    let spacingPx = 0;
-    if (state !== 'past' && start > cursor) {
-      const gapMins = (start - cursor) / 60000;
-      spacingPx = gapMargin(gapMins);
-      if (gapMins >= 1) {
-        // Show now-line if gap starts near current time (within 1 min)
-        const gapStartsNow = Math.abs(cursor - now) < 60000;
-        const gapProgress = gapStartsNow ? Math.min(1, (now - cursor) / (start - cursor)) : -1;
-        const nowLineHtml = gapStartsNow ? `<div class="now-line" style="top:${(gapProgress * 100).toFixed(1)}%"></div>` : '';
-        const label = formatFreeTime(gapMins);
-        html += `
-          <div class="timeline-connector" style="height: ${Math.round(spacingPx)}px;">
-            <div class="timeline-line"></div>
-            ${nowLineHtml}
-            <span class="timeline-label">${label}</span>
-          </div>
-        `;
-        spacingPx = 0; // connector handles the spacing now
-      }
-    }
-
-    // Advance cursor
-    const effective = end > cursor ? end : cursor;
-    cursor = effective;
-
-    // ── Card color styling ──
+    // Card color styling
     let cardStyle = '';
     let timeColor = '';
     let titleColor = '';
@@ -583,7 +624,6 @@ function renderEvents() {
 
     if (state === 'future') {
       let r, g, b;
-
       if (colorMode === 'calendar') {
         const rgb = hexToRgb(getEventColor(event));
         r = rgb ? rgb.r : urgencyR;
@@ -592,7 +632,6 @@ function renderEvents() {
       } else {
         r = urgencyR; g = urgencyG; b = urgencyB;
       }
-
       const bgA = urgencyBgAlpha(minsUntil);
       const txt = urgencyTextColor(bgA, r, g, b);
       titleColor = ` style="color: ${txt.title}"`;
@@ -603,23 +642,17 @@ function renderEvents() {
 
     const startTimeStr = fmt(start);
     const fullTimeStr = `${fmt(start)} – ${fmt(end)}`;
-
     const nextClass = (nextUpId === `ev-${i}`) ? ' next-up' : '';
-    const spacingStyle = spacingPx > 0 ? `margin-top: ${Math.round(spacingPx)}px;` : '';
-    const allStyles = spacingStyle + cardStyle;
+    const spacingStyle = (opts.spacingPx || 0) > 0 ? `margin-top: ${Math.round(opts.spacingPx)}px;` : '';
+    const progressStyle = state === 'current' ? `--progress: ${(progress * 100).toFixed(1)}%;` : '';
+    const allStyles = spacingStyle + cardStyle + progressStyle;
     const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
     const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${key}"` : '';
 
-    const progressBar = state === 'current'
-      ? `<div class="current-progress"><div class="current-progress-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>`
-      : '';
-
-    // Pick the most relevant person to show on the card
     const avatarPerson = pickAvatarPerson(event);
     const avatarName = avatarPerson.displayName || avatarPerson.email || '';
     const avatarInitials = getInitials(avatarName);
 
-    // Build expanded details
     const details = [];
     details.push(`<div class="detail-row"><span class="detail-icon">🕐</span> ${fullTimeStr}</div>`);
     if (countdown && state === 'current') {
@@ -645,10 +678,9 @@ function renderEvents() {
       }
     }
 
-    // Track structure (state + animations) separately from dynamic values
-    structureKey += `${i}:${state}${animClass}|`;
+    structureKey += `${i}:${state}${animClass}:${opts.grouped ? 'g' + opts.clusterIdx : 's'}|`;
 
-    html += `
+    return `
       <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}"${inlineStyle}${dismissAttr} data-expandable>
         <div class="card-summary">
           ${avatarName ? `<div class="organizer-avatar"${locColor}>
@@ -660,10 +692,53 @@ function renderEvents() {
             <div class="event-time"${timeColor}>${startTimeStr}${countdown && state === 'current' ? ` · ${countdown}` : ''}</div>
           </div>
         </div>
-        ${progressBar}
         <div class="card-details">${details.join('')}</div>
       </div>
     `;
+  }
+
+  clusters.forEach((cluster, ci) => {
+    const clusterStart = new Date(cluster.clusterStart);
+    const firstEvent = cluster.events[0];
+    const firstStart = new Date(firstEvent.start.dateTime);
+    const firstEnd = new Date(firstEvent.end.dateTime);
+    const firstState = now >= firstEnd ? 'past' : (now >= firstStart ? 'current' : 'future');
+
+    // Timeline connector before this cluster
+    let spacingPx = 0;
+    if (firstState !== 'past' && clusterStart > cursor) {
+      const gapMins = (clusterStart - cursor) / 60000;
+      spacingPx = gapMargin(gapMins);
+      if (gapMins >= 1) {
+        const gapStartsNow = Math.abs(cursor - now) < 60000;
+        const gapProgress = gapStartsNow ? Math.min(1, (now - cursor) / (clusterStart - cursor)) : -1;
+        const nowLineHtml = gapStartsNow ? `<div class="now-line" style="top:${(gapProgress * 100).toFixed(1)}%"></div>` : '';
+        const label = formatFreeTime(gapMins);
+        html += `
+          <div class="timeline-connector" style="height: ${Math.round(spacingPx)}px;">
+            <div class="timeline-line"></div>
+            ${nowLineHtml}
+            <span class="timeline-label">${label}</span>
+          </div>
+        `;
+        spacingPx = 0;
+      }
+    }
+
+    if (cluster.isOverlapping) {
+      // Render side-by-side
+      const groupStyle = spacingPx > 0 ? ` style="margin-top: ${Math.round(spacingPx)}px;"` : '';
+      html += `<div class="overlap-group"${groupStyle}>`;
+      cluster.events.forEach(ev => {
+        html += renderCard(ev, { spacingPx: 0, grouped: true, clusterIdx: ci });
+      });
+      html += `</div>`;
+    } else {
+      html += renderCard(firstEvent, { spacingPx, grouped: false, clusterIdx: ci });
+    }
+
+    // Advance cursor to end of cluster
+    cursor = new Date(Math.max(cursor.getTime(), cluster.clusterEnd));
   });
 
   // Only rebuild DOM when structure changes (avoids restarting animations)
@@ -703,11 +778,10 @@ function renderEvents() {
       const match = html.match(new RegExp(`id="ev-${idx}"[\\s\\S]*?class="event-time"[^>]*>([^<]+)<`));
       if (match) el.textContent = match[1];
     });
-    const fill = list.querySelector('.current-progress-fill');
-    if (fill) {
-      const match = html.match(/current-progress-fill" style="width:([\d.]+)%/);
-      if (match) fill.style.width = match[1] + '%';
-    }
+    list.querySelectorAll('.event-card.current').forEach(card => {
+      const match = html.match(new RegExp(`id="${card.id}"[^>]*--progress:\\s*([\\d.]+)%`));
+      if (match) card.style.setProperty('--progress', match[1] + '%');
+    });
     // Update now-line position in gap
     const nowLine = list.querySelector('.now-line');
     if (nowLine) {
