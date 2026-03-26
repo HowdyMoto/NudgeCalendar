@@ -2,8 +2,11 @@
 // Replace with your Google Cloud OAuth2 Client ID
 // Instructions: https://console.cloud.google.com/apis/credentials
 const CLIENT_ID = '__GOOGLE_CLIENT_ID__';
-const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
-const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/directory.readonly';
+const DISCOVERY_DOCS = [
+  'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
+  'https://www.googleapis.com/discovery/v1/apis/people/v1/rest',
+];
 
 // ── State ───────────────────────────────────────────────
 let tokenClient;
@@ -13,6 +16,7 @@ let refreshTimer;
 let colorMode = localStorage.getItem('color_mode') || 'urgency';
 let calendarColors = {};  // colorId → { background }
 let calendarMeta = {};    // calendarId → { backgroundColor }
+const photoCache = {};    // email → photo URL (or '' if none)
 let lastStructureKey = '';
 
 // Scroll tracking — let user browse freely, rubber-band back after 30s
@@ -84,7 +88,7 @@ function showScreen(screen) {
 // ── Google API Init ─────────────────────────────────────
 function gapiLoaded() {
   gapi.load('client', async () => {
-    await gapi.client.init({ discoveryDocs: [DISCOVERY_DOC] });
+    await gapi.client.init({ discoveryDocs: DISCOVERY_DOCS });
     // Check for stored token
     const stored = localStorage.getItem('gapi_token');
     if (stored) {
@@ -115,6 +119,60 @@ async function onAuthed() {
   await Promise.all([fetchEvents(), fetchCalendarColors()]);
   showScreen(calendarScreen);
   startTimers();
+}
+
+// ── Fetch profile photos via People API ──────────────────
+async function fetchPhotos(emails) {
+  if (!gapi.client.people) return;
+  const uncached = emails.filter(e => e && !(e in photoCache));
+  if (uncached.length === 0) return;
+
+  // Mark as pending so we don't re-fetch
+  uncached.forEach(e => { photoCache[e] = ''; });
+
+  // Try contacts first, then directory for any still missing
+  await fetchPhotosFromContacts(uncached);
+  const stillMissing = uncached.filter(e => !photoCache[e]);
+  if (stillMissing.length) await fetchPhotosFromDirectory(stillMissing);
+
+  // Re-render to swap in photos
+  lastStructureKey = '';
+  renderEvents();
+}
+
+async function fetchPhotosFromContacts(emails) {
+  const fetches = emails.map(async email => {
+    try {
+      const resp = await gapi.client.people.people.searchContacts({
+        query: email,
+        readMask: 'photos',
+        pageSize: 1,
+      });
+      const person = resp.result.results?.[0]?.person;
+      const photo = person?.photos?.find(p => !p.default)?.url;
+      if (photo) photoCache[email] = photo;
+    } catch (e) {}
+  });
+  await Promise.all(fetches);
+}
+
+async function fetchPhotosFromDirectory(emails) {
+  const fetches = emails.map(async email => {
+    try {
+      const resp = await gapi.client.people.people.searchDirectoryPeople({
+        query: email,
+        readMask: 'photos',
+        sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'],
+        pageSize: 1,
+      });
+      const person = resp.result.people?.[0];
+      const photo = person?.photos?.find(p => !p.default)?.url;
+      if (photo) photoCache[email] = photo;
+    } catch (e) {
+      // Not on Workspace, or no directory access — silently skip
+    }
+  });
+  await Promise.all(fetches);
 }
 
 // ── Fetch Events (from all visible calendars) ───────────
@@ -171,6 +229,10 @@ async function fetchEvents() {
 
     lastStructureKey = '';
     renderEvents();
+
+    // Kick off background photo fetch for all avatar people
+    const emails = events.map(e => pickAvatarPerson(e).email).filter(Boolean);
+    if (emails.length) fetchPhotos([...new Set(emails)]);
   } catch (err) {
     console.error('Failed to fetch events:', err);
     if (err.status === 401) {
@@ -349,9 +411,9 @@ function urgencyTextColor(bgAlpha, r, g, b) {
   const whiteContrast = (1 + 0.05) / (bgLum + 0.05);
   const darkContrast = (bgLum + 0.05) / (0.01 + 0.05);
 
-  // Prefer dark text unless white has clearly better contrast
-  return whiteContrast > darkContrast * 1.6
-    ? { title: '#ffffff', sub: '#dddddd' }
+  // Pick whichever text color gives better contrast
+  return whiteContrast > darkContrast
+    ? { title: '#ffffff', sub: 'rgba(255,255,255,0.75)' }
     : { title: '#1a1a2a', sub: '#2a2a3a' };
 }
 
@@ -505,7 +567,8 @@ function renderEvents() {
       cardStyle = `background: rgba(${r},${g},${b},${bgA.toFixed(3)});`;
     }
 
-    const timeStr = `${fmt(start)} – ${fmt(end)}`;
+    const startTimeStr = fmt(start);
+    const fullTimeStr = `${fmt(start)} – ${fmt(end)}`;
 
     const nextClass = (nextUpId === `ev-${i}`) ? ' next-up' : '';
     const spacingStyle = spacingPx > 0 ? `margin-top: ${Math.round(spacingPx)}px;` : '';
@@ -517,16 +580,54 @@ function renderEvents() {
       ? `<div class="current-progress"><div class="current-progress-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>`
       : '';
 
+    // Pick the most relevant person to show on the card
+    const avatarPerson = pickAvatarPerson(event);
+    const avatarName = avatarPerson.displayName || avatarPerson.email || '';
+    const avatarInitials = getInitials(avatarName);
+
+    // Build expanded details
+    const details = [];
+    details.push(`<div class="detail-row"><span class="detail-icon">🕐</span> ${fullTimeStr}</div>`);
+    if (countdown && state === 'current') {
+      details.push(`<div class="detail-row"><span class="detail-icon">⏳</span> ${escapeHtml(countdown)}</div>`);
+    }
+    if (event.location) {
+      details.push(`<div class="detail-row"><span class="detail-icon">📍</span> ${escapeHtml(event.location)}</div>`);
+    }
+    const organizer = event.organizer || {};
+    const organizerName = organizer.displayName || organizer.email || '';
+    if (organizerName) {
+      details.push(`<div class="detail-row"><span class="detail-icon">👤</span> Organized by ${escapeHtml(organizerName)}</div>`);
+    }
+    const attendeeCount = (event.attendees || []).filter(a => !a.self && !a.resource).length;
+    if (attendeeCount > 0) {
+      details.push(`<div class="detail-row"><span class="detail-icon">👥</span> ${attendeeCount} other${attendeeCount > 1 ? 's' : ''}</div>`);
+    }
+    if (event.description) {
+      const desc = event.description.replace(/<[^>]+>/g, '').trim();
+      if (desc) {
+        const short = desc.length > 120 ? desc.slice(0, 120) + '…' : desc;
+        details.push(`<div class="detail-row detail-desc">${escapeHtml(short)}</div>`);
+      }
+    }
+
     // Track structure (state + animations) separately from dynamic values
     structureKey += `${i}:${state}${animClass}|`;
 
     html += `
-      <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}"${inlineStyle}${dismissAttr}>
-        ${countdown ? `<span class="countdown"${timeColor}>${countdown}</span>` : ''}
-        <div class="event-time"${timeColor}>${timeStr}</div>
-        <div class="event-title"${titleColor}>${escapeHtml(event.summary || '(No title)')}</div>
-        ${event.location ? `<div class="event-location"${locColor}>${escapeHtml(event.location)}</div>` : ''}
+      <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}"${inlineStyle}${dismissAttr} data-expandable>
+        <div class="card-summary">
+          ${avatarName ? `<div class="organizer-avatar"${locColor}>
+            ${photoCache[avatarPerson.email] ? `<img class="avatar-img" src="${photoCache[avatarPerson.email]}" alt="">` : ''}
+            <span class="avatar-initials">${escapeHtml(avatarInitials)}</span>
+          </div>` : ''}
+          <div class="card-main">
+            <div class="event-title"${titleColor}>${escapeHtml(event.summary || '(No title)')}</div>
+            <div class="event-time"${timeColor}>${startTimeStr}${countdown && state === 'current' ? ` · ${countdown}` : ''}</div>
+          </div>
+        </div>
         ${progressBar}
+        <div class="card-details">${details.join('')}</div>
       </div>
     `;
   });
@@ -536,9 +637,14 @@ function renderEvents() {
     list.innerHTML = html;
     lastStructureKey = structureKey;
 
-    // Tap to dismiss continuous throb
+    // Tap to dismiss continuous throb (consumes the click — no expand)
     list.querySelectorAll('[data-dismiss]').forEach(el => {
-      el.addEventListener('click', () => dismissEvent(el.dataset.dismiss));
+      el.addEventListener('click', (e) => {
+        if (el.classList.contains('antsy')) {
+          e.stopImmediatePropagation();
+          dismissEvent(el.dataset.dismiss);
+        }
+      });
     });
 
     // Remove one-shot animation classes after they play
@@ -547,15 +653,21 @@ function renderEvents() {
         el.classList.remove('throb-small', 'throb-medium', 'throb-large');
       }, { once: true });
     });
+
+    // Tap to expand/collapse card details
+    list.querySelectorAll('[data-expandable]').forEach(el => {
+      el.addEventListener('click', () => {
+        el.classList.toggle('expanded');
+      });
+    });
   } else {
     // Patch only dynamic values in-place
-    list.querySelectorAll('.countdown').forEach(el => {
+    list.querySelectorAll('.event-time').forEach(el => {
       const card = el.closest('.event-card');
-      const idx = card?.id?.replace('ev-', '');
-      if (idx != null) {
-        const newCard = html.match(new RegExp(`id="ev-${idx}"[^>]*>[\\s\\S]*?<span class="countdown"[^>]*>([^<]+)</span>`));
-        if (newCard) el.textContent = newCard[1];
-      }
+      if (!card) return;
+      const idx = card.id?.replace('ev-', '');
+      const match = html.match(new RegExp(`id="ev-${idx}"[\\s\\S]*?class="event-time"[^>]*>([^<]+)<`));
+      if (match) el.textContent = match[1];
     });
     const fill = list.querySelector('.current-progress-fill');
     if (fill) {
@@ -598,6 +710,49 @@ function formatFreeTime(mins) {
   const m = Math.round(mins % 60);
   if (m === 0) return `${hrs}h free`;
   return `${hrs}h ${m}m free`;
+}
+
+
+// Pick the most relevant person to show as the card avatar.
+// If I organized it, show the most relevant attendee. Otherwise show the organizer.
+function pickAvatarPerson(event) {
+  const organizer = event.organizer || {};
+  const attendees = event.attendees || [];
+  const iAmOrganizer = organizer.self || attendees.some(a => a.self && a.organizer);
+
+  if (!iAmOrganizer || attendees.length === 0) {
+    return organizer;
+  }
+
+  // Filter to non-self, non-resource attendees
+  const others = attendees.filter(a => !a.self && !a.resource);
+  if (others.length === 0) return organizer;
+
+  // Score each attendee for relevance:
+  // - accepted > tentative > needsAction > declined
+  // - fewer total attendees = more relevant (1:1 > large meeting)
+  // - having a displayName is better (more personal)
+  const statusScore = { accepted: 4, tentative: 3, needsAction: 2, declined: 0 };
+  others.sort((a, b) => {
+    const sa = statusScore[a.responseStatus] || 1;
+    const sb = statusScore[b.responseStatus] || 1;
+    if (sa !== sb) return sb - sa;
+    // Prefer named attendees
+    if (a.displayName && !b.displayName) return -1;
+    if (!a.displayName && b.displayName) return 1;
+    return 0;
+  });
+
+  return others[0];
+}
+
+function getInitials(name) {
+  if (!name) return '';
+  // Handle email addresses
+  if (name.includes('@')) name = name.split('@')[0].replace(/[._]/g, ' ');
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return (parts[0] || '').slice(0, 2).toUpperCase();
 }
 
 function escapeHtml(str) {
@@ -660,6 +815,7 @@ if ('serviceWorker' in navigator) {
 const DEMO_MODE = !CLIENT_ID || CLIENT_ID.startsWith('__');
 
 function loadDemoEvents() {
+
   const now = new Date();
   const today = (h, m) => {
     const d = new Date(now);
@@ -701,47 +857,88 @@ function loadDemoEvents() {
     {
       summary: 'Team Standup',
       _calendarId: 'work',
+      organizer: { displayName: 'You', email: 'me@example.com', self: true },
+      attendees: [
+        { displayName: 'You', email: 'me@example.com', self: true, responseStatus: 'accepted' },
+        { displayName: 'Alex Chen', email: 'alex@example.com', responseStatus: 'accepted' },
+        { displayName: 'Sam Rivera', email: 'sam@example.com', responseStatus: 'accepted' },
+      ],
       start: { dateTime: today(nowH - 2, 0) },
       end:   { dateTime: today(nowH - 2, 30) },
     },
     {
       summary: 'Sprint Review',
       _calendarId: 'work',
+      organizer: { displayName: 'Sam Rivera', email: 'sam@example.com' },
+      attendees: [
+        { displayName: 'You', email: 'me@example.com', self: true, responseStatus: 'accepted' },
+        { displayName: 'Sam Rivera', email: 'sam@example.com', organizer: true, responseStatus: 'accepted' },
+        { displayName: 'Alex Chen', email: 'alex@example.com', responseStatus: 'accepted' },
+        { displayName: 'Morgan Lee', email: 'morgan@example.com', responseStatus: 'tentative' },
+      ],
+      description: 'Review sprint progress and demo completed stories.',
       start: { dateTime: today(nowH - 1, 0) },
       end:   { dateTime: today(nowH - 1, 45) },
     },
     {
       summary: 'Design Sync — Homepage Redesign',
       _calendarId: 'work',
-      colorId: '3', // event-level override: Grape
+      colorId: '3',
       location: 'Zoom',
+      organizer: { displayName: 'Morgan Lee', email: 'morgan@example.com' },
+      attendees: [
+        { displayName: 'You', email: 'me@example.com', self: true, responseStatus: 'accepted' },
+        { displayName: 'Morgan Lee', email: 'morgan@example.com', organizer: true, responseStatus: 'accepted' },
+      ],
+      description: 'Review latest mockups and discuss responsive layout approach.',
       start: { dateTime: today(nowH, nowM - 10) },
       end:   { dateTime: today(nowH, nowM + 20) },
     },
     {
       summary: '1:1 with Jordan',
       _calendarId: 'work',
-      colorId: '4', // event-level override: Flamingo
+      colorId: '4',
       location: 'Conference Room B',
+      organizer: { displayName: 'You', email: 'me@example.com', self: true },
+      attendees: [
+        { displayName: 'You', email: 'me@example.com', self: true, organizer: true, responseStatus: 'accepted' },
+        { displayName: 'Jordan Patel', email: 'jordan@example.com', responseStatus: 'accepted' },
+      ],
       start: { dateTime: today(nowH, nowM - 5) },
       end:   { dateTime: today(nowH, nowM + 25) },
     },
     {
       summary: 'API Review',
-      _calendarId: 'work', // inherits Work calendar blue
+      _calendarId: 'work',
+      organizer: { displayName: 'Taylor Kim', email: 'taylor@example.com' },
+      attendees: [
+        { displayName: 'You', email: 'me@example.com', self: true, responseStatus: 'accepted' },
+        { displayName: 'Taylor Kim', email: 'taylor@example.com', organizer: true, responseStatus: 'accepted' },
+        { displayName: 'Alex Chen', email: 'alex@example.com', responseStatus: 'needsAction' },
+      ],
+      description: 'Walk through the new endpoints and discuss rate limiting strategy.',
       start: { dateTime: today(nowH, nowM + 12) },
       end:   { dateTime: today(nowH, nowM + 42) },
     },
     {
       summary: 'Lunch',
-      _calendarId: 'personal', // inherits Personal calendar lavender
+      _calendarId: 'personal',
       start: { dateTime: today(nowH + 1, 30) },
       end:   { dateTime: today(nowH + 2, 30) },
     },
     {
       summary: 'Product Roadmap Planning',
-      _calendarId: 'family', // inherits Family calendar green
+      _calendarId: 'family',
       location: 'Main Conference Room',
+      organizer: { displayName: 'You', email: 'me@example.com', self: true },
+      attendees: [
+        { displayName: 'You', email: 'me@example.com', self: true, organizer: true, responseStatus: 'accepted' },
+        { displayName: 'Casey Wright', email: 'casey@example.com', responseStatus: 'accepted' },
+        { displayName: 'Jordan Patel', email: 'jordan@example.com', responseStatus: 'tentative' },
+        { displayName: 'Morgan Lee', email: 'morgan@example.com', responseStatus: 'declined' },
+        { displayName: 'Sam Rivera', email: 'sam@example.com', responseStatus: 'needsAction' },
+      ],
+      description: 'Q3 planning session. Bring your top 3 priorities.',
       start: { dateTime: today(nowH + 4, 0) },
       end:   { dateTime: today(nowH + 5, 0) },
     },

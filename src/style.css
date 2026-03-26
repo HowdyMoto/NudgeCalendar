@@ -137,14 +137,54 @@ html, body {
   transition: background 0.4s ease, box-shadow 0.4s ease;
   position: relative;
   z-index: 1;
-  overflow: visible;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+
+.organizer-avatar {
+  width: 2.2em;
+  height: 2.2em;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+  font-size: 0.65em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+  position: relative;
+  overflow: hidden;
+}
+.avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.avatar-initials {
+  position: relative;
+}
+
+.card-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .event-time {
-  font-size: 0.82em;
+  font-size: 0.78em;
   font-weight: 500;
   color: var(--text-dim);
-  margin-bottom: 0.15em;
   letter-spacing: 0.01em;
 }
 
@@ -153,12 +193,53 @@ html, body {
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.event-location {
+/* ── Expandable card details ─────────────────────────── */
+.card-details {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.25s ease,
+              margin-top 0.25s ease;
+  opacity: 0;
+  margin-top: 0;
+}
+
+.event-card.expanded .card-details {
+  max-height: 200px;
+  opacity: 1;
+  margin-top: 0.5em;
+}
+
+.event-card.expanded .event-title {
+  white-space: normal;
+}
+
+.detail-row {
   font-size: 0.78em;
   color: var(--text-dim);
-  margin-top: 0.15em;
+  padding: 0.2em 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+}
+
+.detail-icon {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.detail-desc {
+  margin-top: 0.3em;
+  font-style: italic;
+  color: var(--text-faint);
+  line-height: 1.4;
 }
 
 /* All-day events */
@@ -319,6 +400,10 @@ html, body {
     bg-pulse 2.4s ease-in-out infinite;
   cursor: pointer;
 }
+.event-card.antsy .event-title,
+.event-card.antsy .event-time {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
 .event-card.antsy::after {
   animation: dust-cont 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
@@ -443,16 +528,6 @@ html, body {
   75%      { transform: translateY(0)     rotate(0deg);    filter: brightness(1); }
 }
 
-/* ── Countdown badge ─────────────────────────────────── */
-.countdown {
-  position: absolute;
-  top: 0.7em;
-  right: 0.8em;
-  font-size: 0.78em;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--upcoming);
-}
 
 
 /* ── Loading ─────────────────────────────────────────── */
@@ -655,12 +730,6 @@ html, body {
   .event-location {
     font-size: 0.65em;
     margin-top: 1px;
-  }
-
-  .countdown {
-    font-size: 0.65em;
-    top: 8px;
-    right: 12px;
   }
 
   .timeline-connector {
