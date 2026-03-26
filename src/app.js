@@ -2,7 +2,7 @@
 // Replace with your Google Cloud OAuth2 Client ID
 // Instructions: https://console.cloud.google.com/apis/credentials
 const CLIENT_ID = '__GOOGLE_CLIENT_ID__';
-const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/directory.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly https://www.googleapis.com/auth/directory.readonly';
 const DISCOVERY_DOCS = [
   'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
   'https://www.googleapis.com/discovery/v1/apis/people/v1/rest',
@@ -130,14 +130,20 @@ async function fetchPhotos(emails) {
   // Mark as pending so we don't re-fetch
   uncached.forEach(e => { photoCache[e] = ''; });
 
-  // Try contacts first, then directory for any still missing
+  // Try multiple sources in order: contacts, other contacts, then directory
   await fetchPhotosFromContacts(uncached);
-  const stillMissing = uncached.filter(e => !photoCache[e]);
-  if (stillMissing.length) await fetchPhotosFromDirectory(stillMissing);
 
-  // Re-render to swap in photos
-  lastStructureKey = '';
-  renderEvents();
+  let missing = uncached.filter(e => !photoCache[e]);
+  if (missing.length) await fetchPhotosFromOtherContacts(missing);
+
+  missing = uncached.filter(e => !photoCache[e]);
+  if (missing.length) await fetchPhotosFromDirectory(missing);
+
+  // Re-render if any photos were found
+  if (uncached.some(e => photoCache[e])) {
+    lastStructureKey = '';
+    renderEvents();
+  }
 }
 
 async function fetchPhotosFromContacts(emails) {
@@ -156,6 +162,36 @@ async function fetchPhotosFromContacts(emails) {
   await Promise.all(fetches);
 }
 
+async function fetchPhotosFromOtherContacts(emails) {
+  // "Other contacts" are people you've emailed/met with but haven't saved.
+  // The API doesn't support search, so we list and match by email.
+  try {
+    let pageToken = '';
+    const emailSet = new Set(emails.map(e => e.toLowerCase()));
+    do {
+      const resp = await gapi.client.people.otherContacts.list({
+        readMask: 'emailAddresses,photos',
+        pageSize: 100,
+        pageToken: pageToken || undefined,
+      });
+      const contacts = resp.result.otherContacts || [];
+      for (const c of contacts) {
+        const cEmails = (c.emailAddresses || []).map(e => e.value.toLowerCase());
+        const match = cEmails.find(e => emailSet.has(e));
+        if (match) {
+          const photo = c.photos?.find(p => !p.default)?.url;
+          if (photo) photoCache[match] = photo;
+          emailSet.delete(match);
+        }
+      }
+      pageToken = resp.result.nextPageToken || '';
+      // Stop if we found everyone or there are no more pages
+    } while (pageToken && emailSet.size > 0);
+  } catch (e) {
+    // contacts.other.readonly not granted or API error
+  }
+}
+
 async function fetchPhotosFromDirectory(emails) {
   const fetches = emails.map(async email => {
     try {
@@ -168,9 +204,7 @@ async function fetchPhotosFromDirectory(emails) {
       const person = resp.result.people?.[0];
       const photo = person?.photos?.find(p => !p.default)?.url;
       if (photo) photoCache[email] = photo;
-    } catch (e) {
-      // Not on Workspace, or no directory access — silently skip
-    }
+    } catch (e) {}
   });
   await Promise.all(fetches);
 }
