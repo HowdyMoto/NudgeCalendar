@@ -599,6 +599,7 @@ function renderEvents() {
       if (!nextUpId) nextUpId = `ev-${i}`;
       progress = (now - start) / (end - start);
       const minsLeft = (end - now) / 60000;
+      if (minsLeft <= 5) animClass = ' wrapping-up';
       countdown = `${Math.ceil(minsLeft)}m left`;
     } else {
       if (!nextUpId) nextUpId = `ev-${i}`;
@@ -643,7 +644,13 @@ function renderEvents() {
     const startTimeStr = fmt(start);
     const fullTimeStr = `${fmt(start)} – ${fmt(end)}`;
     const nextClass = (nextUpId === `ev-${i}`) ? ' next-up' : '';
-    const spacingStyle = (opts.spacingPx || 0) > 0 ? `margin-top: ${Math.round(opts.spacingPx)}px;` : '';
+    // In overlap groups, offset cards that start later than the cluster's first event
+    const offsetPx = opts.grouped && opts.clusterStart
+      ? gapMargin((start - opts.clusterStart) / 60000)
+      : 0;
+    const spacingStyle = (opts.spacingPx || 0) > 0
+      ? `margin-top: ${Math.round(opts.spacingPx)}px;`
+      : (offsetPx > 0 ? `margin-top: ${Math.round(offsetPx)}px;` : '');
     const progressStyle = state === 'current' ? `--progress: ${(progress * 100).toFixed(1)}%;` : '';
     const allStyles = spacingStyle + cardStyle + progressStyle;
     const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
@@ -730,7 +737,7 @@ function renderEvents() {
       const groupStyle = spacingPx > 0 ? ` style="margin-top: ${Math.round(spacingPx)}px;"` : '';
       html += `<div class="overlap-group"${groupStyle}>`;
       cluster.events.forEach(ev => {
-        html += renderCard(ev, { spacingPx: 0, grouped: true, clusterIdx: ci });
+        html += renderCard(ev, { spacingPx: 0, grouped: true, clusterIdx: ci, clusterStart: cluster.clusterStart });
       });
       html += `</div>`;
     } else {

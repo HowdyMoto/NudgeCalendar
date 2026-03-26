@@ -319,6 +319,19 @@ html, body {
 .event-card.current .event-time  { color: rgba(255, 255, 255, 0.7); }
 .event-card.current .event-location { color: rgba(255, 255, 255, 0.5); }
 
+/* ── Wrapping up (≤5 min left) ───────────────────────── */
+.event-card.wrapping-up::before {
+  background: rgba(245, 166, 35, 0.18);
+}
+.event-card.wrapping-up {
+  border-color: rgba(245, 166, 35, 0.6);
+  animation: wrap-pulse 3s ease-in-out infinite;
+}
+@keyframes wrap-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(245, 166, 35, 0); }
+  50%      { box-shadow: 0 0 20px rgba(245, 166, 35, 0.15); }
+}
+
 /* ── Now line (in timeline gaps) ─────────────────────── */
 .now-line {
   position: absolute;
@@ -433,10 +446,6 @@ html, body {
     ollie-continuous 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite,
     bg-pulse 2.4s ease-in-out infinite;
   cursor: pointer;
-}
-.event-card.antsy .event-title,
-.event-card.antsy .event-time {
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 .event-card.antsy::after {
   animation: dust-cont 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
