@@ -374,17 +374,17 @@ function buildOverlapClusters(timedEvents) {
 
 // ── Color palettes ──────────────────────────────────────
 const COLOR_PALETTES = [
-  { name: 'Ember',    hex: '#e8722a' },
-  { name: 'Sunset',   hex: '#e85d75' },
-  { name: 'Gold',     hex: '#d4a017' },
-  { name: 'Lime',     hex: '#6abf40' },
-  { name: 'Teal',     hex: '#2bb5a0' },
   { name: 'Sky',      hex: '#4a9eff' },
   { name: 'Violet',   hex: '#8b6cf6' },
+  { name: 'Teal',     hex: '#2bb5a0' },
+  { name: 'Lime',     hex: '#6abf40' },
+  { name: 'Gold',     hex: '#d4a017' },
+  { name: 'Ember',    hex: '#e8722a' },
+  { name: 'Sunset',   hex: '#e85d75' },
   { name: 'Rose',     hex: '#d46493' },
 ];
 
-let urgencyR = 232, urgencyG = 114, urgencyB = 42;
+let urgencyR = 74, urgencyG = 158, urgencyB = 255;
 
 function setUrgencyColor(hex) {
   const rgb = hexToRgb(hex);
@@ -416,7 +416,7 @@ function initColorPicker() {
     container.appendChild(el);
   });
   // Restore saved color
-  const saved = localStorage.getItem('urgency_color') || '#e8722a';
+  const saved = localStorage.getItem('urgency_color') || '#4a9eff';
   setUrgencyColor(saved);
 }
 

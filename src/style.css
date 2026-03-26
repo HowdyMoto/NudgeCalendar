@@ -10,12 +10,12 @@
   --accent: #6e9fff;
   --accent-glow: rgba(110, 159, 255, 0.15);
   --upcoming: #f5a623;
-  --urgency: #e8722a;
+  --urgency: #4a9eff;
   --past: #2a2a35;
   --past-text: #4a4a55;
-  --ur: 232;
-  --ug: 114;
-  --ub: 42;
+  --ur: 74;
+  --ug: 158;
+  --ub: 255;
   --radius: 14px;
   --safe-top: env(safe-area-inset-top, 20px);
   --safe-bottom: env(safe-area-inset-bottom, 20px);
