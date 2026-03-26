@@ -13,6 +13,7 @@ let refreshTimer;
 let colorMode = localStorage.getItem('color_mode') || 'urgency';
 let calendarColors = {};  // colorId → { background }
 let calendarMeta = {};    // calendarId → { backgroundColor }
+let lastStructureKey = '';
 
 // Scroll tracking — let user browse freely, rubber-band back after 30s
 let userScrolledRecently = false;
@@ -168,6 +169,7 @@ async function fetchEvents() {
         return aTime.localeCompare(bTime);
       });
 
+    lastStructureKey = '';
     renderEvents();
   } catch (err) {
     console.error('Failed to fetch events:', err);
@@ -216,6 +218,7 @@ function setUrgencyColor(hex) {
   document.querySelectorAll('.color-swatch').forEach(el => {
     el.classList.toggle('selected', el.dataset.hex === hex);
   });
+  lastStructureKey = '';
   if (events.length) renderEvents();
 }
 
@@ -242,6 +245,7 @@ function setColorMode(mode) {
     el.classList.toggle('selected', el.dataset.mode === mode);
   });
   document.getElementById('urgency-section').classList.toggle('hidden', mode !== 'urgency');
+  lastStructureKey = '';
   if (events.length) renderEvents();
 }
 
@@ -381,6 +385,7 @@ function renderEvents() {
   let cursor = now;
   let nextUpId = null;
   let html = '';
+  let structureKey = '';
 
   const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
@@ -396,6 +401,8 @@ function renderEvents() {
   }
 
   // ── Timed events ──
+  let currentCount = 0;
+
   events.forEach((event, i) => {
     const isAllDay = !event.start.dateTime;
     if (isAllDay) return;
@@ -410,11 +417,21 @@ function renderEvents() {
     let minsUntil = (start - now) / 60000;
     const key = eventKey(event);
 
+    let progress = 0;
+
     if (now >= end) {
       state = 'past';
     } else if (now >= start && now < end) {
       state = 'current';
+      currentCount++;
       if (!nextUpId) nextUpId = `ev-${i}`;
+      progress = (now - start) / (end - start);
+      const minsLeft = (end - now) / 60000;
+      countdown = `${Math.ceil(minsLeft)}m left`;
+      // Show overlap connector between concurrent meetings
+      if (currentCount > 1) {
+        html += `<div class="overlap-connector"><span class="overlap-label">overlapping</span></div>`;
+      }
     } else {
       // Future event
       if (!nextUpId) nextUpId = `ev-${i}`;
@@ -442,10 +459,15 @@ function renderEvents() {
       const gapMins = (start - cursor) / 60000;
       spacingPx = gapMargin(gapMins);
       if (gapMins >= 1) {
+        // Show now-line if gap starts near current time (within 1 min)
+        const gapStartsNow = Math.abs(cursor - now) < 60000;
+        const gapProgress = gapStartsNow ? Math.min(1, (now - cursor) / (start - cursor)) : -1;
+        const nowLineHtml = gapStartsNow ? `<div class="now-line" style="top:${(gapProgress * 100).toFixed(1)}%"></div>` : '';
         const label = formatFreeTime(gapMins);
         html += `
           <div class="timeline-connector" style="height: ${Math.round(spacingPx)}px;">
             <div class="timeline-line"></div>
+            ${nowLineHtml}
             <span class="timeline-label">${label}</span>
           </div>
         `;
@@ -491,30 +513,62 @@ function renderEvents() {
     const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
     const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${key}"` : '';
 
+    const progressBar = state === 'current'
+      ? `<div class="current-progress"><div class="current-progress-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>`
+      : '';
+
+    // Track structure (state + animations) separately from dynamic values
+    structureKey += `${i}:${state}${animClass}|`;
+
     html += `
       <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}"${inlineStyle}${dismissAttr}>
         ${countdown ? `<span class="countdown"${timeColor}>${countdown}</span>` : ''}
         <div class="event-time"${timeColor}>${timeStr}</div>
         <div class="event-title"${titleColor}>${escapeHtml(event.summary || '(No title)')}</div>
         ${event.location ? `<div class="event-location"${locColor}>${escapeHtml(event.location)}</div>` : ''}
+        ${progressBar}
       </div>
     `;
   });
 
-  list.innerHTML = html;
+  // Only rebuild DOM when structure changes (avoids restarting animations)
+  if (structureKey !== lastStructureKey) {
+    list.innerHTML = html;
+    lastStructureKey = structureKey;
 
+    // Tap to dismiss continuous throb
+    list.querySelectorAll('[data-dismiss]').forEach(el => {
+      el.addEventListener('click', () => dismissEvent(el.dataset.dismiss));
+    });
 
-  // Tap to dismiss continuous throb
-  list.querySelectorAll('[data-dismiss]').forEach(el => {
-    el.addEventListener('click', () => dismissEvent(el.dataset.dismiss));
-  });
-
-  // Remove one-shot animation classes after they play
-  list.querySelectorAll('.throb-small, .throb-medium, .throb-large').forEach(el => {
-    el.addEventListener('animationend', () => {
-      el.classList.remove('throb-small', 'throb-medium', 'throb-large');
-    }, { once: true });
-  });
+    // Remove one-shot animation classes after they play
+    list.querySelectorAll('.throb-small, .throb-medium, .throb-large').forEach(el => {
+      el.addEventListener('animationend', () => {
+        el.classList.remove('throb-small', 'throb-medium', 'throb-large');
+      }, { once: true });
+    });
+  } else {
+    // Patch only dynamic values in-place
+    list.querySelectorAll('.countdown').forEach(el => {
+      const card = el.closest('.event-card');
+      const idx = card?.id?.replace('ev-', '');
+      if (idx != null) {
+        const newCard = html.match(new RegExp(`id="ev-${idx}"[^>]*>[\\s\\S]*?<span class="countdown"[^>]*>([^<]+)</span>`));
+        if (newCard) el.textContent = newCard[1];
+      }
+    });
+    const fill = list.querySelector('.current-progress-fill');
+    if (fill) {
+      const match = html.match(/current-progress-fill" style="width:([\d.]+)%/);
+      if (match) fill.style.width = match[1] + '%';
+    }
+    // Update now-line position in gap
+    const nowLine = list.querySelector('.now-line');
+    if (nowLine) {
+      const match = html.match(/now-line" style="top:([\d.]+)%/);
+      if (match) nowLine.style.top = match[1] + '%';
+    }
+  }
 
   // Auto-scroll to next event (respects user scroll — waits before snapping back)
   if (nextUpId && !userScrolledRecently) {
@@ -669,8 +723,8 @@ function loadDemoEvents() {
       _calendarId: 'work',
       colorId: '4', // event-level override: Flamingo
       location: 'Conference Room B',
-      start: { dateTime: today(nowH, nowM + 3) },
-      end:   { dateTime: today(nowH, nowM + 33) },
+      start: { dateTime: today(nowH, nowM - 5) },
+      end:   { dateTime: today(nowH, nowM + 25) },
     },
     {
       summary: 'API Review',
@@ -693,6 +747,7 @@ function loadDemoEvents() {
     },
   ];
 
+  lastStructureKey = '';
   renderEvents();
 }
 

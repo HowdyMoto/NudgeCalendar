@@ -84,7 +84,7 @@ html, body {
 }
 
 #date-header {
-  font-size: 1.1rem;
+  font-size: 1.1em;
   font-weight: 600;
   color: var(--text-dim);
   text-align: center;
@@ -95,7 +95,7 @@ html, body {
 
 .now-time {
   text-align: center;
-  font-size: 2.6rem;
+  font-size: 2.6em;
   font-weight: 700;
   letter-spacing: -0.03em;
   padding: 4px 0 16px;
@@ -123,7 +123,7 @@ html, body {
   justify-content: center;
 }
 #empty-state p {
-  font-size: 1.3rem;
+  font-size: 1.3em;
   color: var(--text-faint);
 }
 
@@ -191,14 +191,64 @@ html, body {
 
 /* ── Current / in-progress ───────────────────────────── */
 .event-card.current {
-  background: rgba(var(--ur), var(--ug), var(--ub), 0.18);
-  box-shadow: 0 0 12px rgba(var(--ur), var(--ug), var(--ub), 0.15);
-  animation: current-pulse 3s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.06);
+}
+.event-card.current .event-title { color: #ffffff; }
+.event-card.current .event-time  { color: rgba(255, 255, 255, 0.7); }
+.event-card.current .event-location { color: rgba(255, 255, 255, 0.5); }
+
+/* ── Progress bar inside current meeting card ─────────── */
+.current-progress {
+  margin-top: 0.5em;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.current-progress-fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 2px;
+  transition: width 10s linear;
 }
 
-@keyframes current-pulse {
-  0%, 100% { box-shadow: 0 0 12px rgba(var(--ur), var(--ug), var(--ub), 0.15); }
-  50%      { box-shadow: 0 0 20px rgba(var(--ur), var(--ug), var(--ub), 0.3); }
+/* ── Now line (in timeline gaps) ─────────────────────── */
+.now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.4);
+  z-index: 2;
+  pointer-events: none;
+}
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Overlap connector between concurrent meetings ──── */
+.overlap-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  position: relative;
+}
+.overlap-label {
+  font-size: 0.65em;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 /* ── Upcoming states ─────────────────────────────────── */
@@ -445,7 +495,7 @@ html, body {
 }
 
 .timeline-label {
-  font-size: 0.72rem;
+  font-size: 0.72em;
   font-weight: 500;
   color: var(--text-faint);
   letter-spacing: 0.03em;
@@ -574,12 +624,12 @@ html, body {
 /* ── Landscape: compact everything to fit the day ────── */
 @media (orientation: landscape) {
   #date-header {
-    font-size: 0.8rem;
+    font-size: 0.8em;
     padding: 6px 0 2px;
   }
 
   .now-time {
-    font-size: 1.4rem;
+    font-size: 1.4em;
     padding: 2px 0 6px;
   }
 
@@ -594,21 +644,21 @@ html, body {
   }
 
   .event-time {
-    font-size: 0.7rem;
+    font-size: 0.7em;
     margin-bottom: 1px;
   }
 
   .event-title {
-    font-size: 0.85rem;
+    font-size: 0.85em;
   }
 
   .event-location {
-    font-size: 0.65rem;
+    font-size: 0.65em;
     margin-top: 1px;
   }
 
   .countdown {
-    font-size: 0.65rem;
+    font-size: 0.65em;
     top: 8px;
     right: 12px;
   }
@@ -618,7 +668,7 @@ html, body {
   }
 
   .timeline-label {
-    font-size: 0.6rem;
+    font-size: 0.6em;
   }
 
   .event-card.throb-small,
