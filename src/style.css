@@ -449,6 +449,7 @@ html, body {
 }
 .event-card.antsy::after {
   animation: dust-cont 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation-delay: inherit;
 }
 
 /* "Tickled" — playful dismiss when you poke an antsy card */

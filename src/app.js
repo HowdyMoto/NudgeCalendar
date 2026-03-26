@@ -579,6 +579,7 @@ function renderEvents() {
   // Map each timed event back to its original index in `events` for stable IDs
   const eventIndex = new Map();
   events.forEach((e, i) => { if (e.start.dateTime) eventIndex.set(e, i); });
+  let bounceCount = 0;
 
   function renderCard(event, opts) {
     const i = eventIndex.get(event);
@@ -652,7 +653,8 @@ function renderEvents() {
       ? `margin-top: ${Math.round(opts.spacingPx)}px;`
       : (offsetPx > 0 ? `margin-top: ${Math.round(offsetPx)}px;` : '');
     const progressStyle = state === 'current' ? `--progress: ${(progress * 100).toFixed(1)}%;` : '';
-    const allStyles = spacingStyle + cardStyle + progressStyle;
+    const bounceDelay = animClass ? `animation-delay: ${(bounceCount++ * 0.4).toFixed(1)}s;` : '';
+    const allStyles = spacingStyle + cardStyle + progressStyle + bounceDelay;
     const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
     const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${key}"` : '';
 
