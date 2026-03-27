@@ -19,6 +19,18 @@ let calendarMeta = {};    // calendarId → { backgroundColor }
 const photoCache = {};    // email → photo URL (or '' if none)
 let lastStructureKey = '';
 
+// Timeline scaling
+const PX_PER_MIN = 4;
+const MIN_CARD_HEIGHT = 48;
+const PLAYHEAD_OFFSET = 80; // px from top of scroll container where "now" sits
+
+function cardHeight(durationMins, isPast) {
+  if (isPast) return Math.max(MIN_CARD_HEIGHT, Math.min(80, durationMins * PX_PER_MIN));
+  return Math.max(MIN_CARD_HEIGHT, durationMins * PX_PER_MIN);
+}
+
+function minsOf(a, b) { return (a - b) / 60000; }
+
 // Scroll tracking — let user browse freely, rubber-band back after 30s
 let userScrolledRecently = false;
 let scrollTimeout = null;
@@ -200,9 +212,6 @@ async function fetchPhotos(emails) {
   let missing = uncached.filter(e => !photoCache[e]);
   if (missing.length) await fetchPhotosFromOtherContacts(missing);
 
-  missing = uncached.filter(e => !photoCache[e]);
-  if (missing.length) await fetchPhotosFromDirectory(missing);
-
   // Log results
   const found = uncached.filter(e => photoCache[e]);
   const notFound = uncached.filter(e => !photoCache[e]);
@@ -264,24 +273,7 @@ async function fetchPhotosFromOtherContacts(emails) {
   }
 }
 
-async function fetchPhotosFromDirectory(emails) {
-  const fetches = emails.map(async email => {
-    try {
-      const resp = await gapi.client.people.people.searchDirectoryPeople({
-        query: email,
-        readMask: 'photos',
-        sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'],
-        pageSize: 1,
-      });
-      const person = resp.result.people?.[0];
-      const photo = person?.photos?.find(p => !p.default)?.url;
-      if (photo) photoCache[email] = photo;
-    } catch (e) {
-      console.warn(`[photos] directory lookup failed for ${email}:`, e);
-    }
-  });
-  await Promise.all(fetches);
-}
+
 
 // ── Fetch Events (from all visible calendars) ───────────
 async function fetchEvents() {
@@ -355,9 +347,42 @@ async function fetchEvents() {
 // Calculate top margin to represent the time gap before an event.
 // Uses sqrt scaling so short gaps are visible but long gaps don't blow out.
 // Cap at 140px so a full day still fits on screen.
-function gapMargin(gapMinutes) {
+function gapMargin(gapMinutes, isPast) {
   if (gapMinutes <= 0) return 0;
-  return Math.min(140, Math.sqrt(gapMinutes) * 9);
+  if (isPast) return Math.min(40, Math.sqrt(gapMinutes) * 6);
+  return gapMinutes * PX_PER_MIN;
+}
+
+// Compute the Y position of "now" in the timeline by walking clusters/gaps
+function computeNowPosition(clusters, now) {
+  if (clusters.length === 0) return 0;
+  let yPos = 0;
+  let cursor = new Date(clusters[0].clusterStart);
+
+  for (const cluster of clusters) {
+    const cStart = new Date(cluster.clusterStart);
+    const cEnd = new Date(cluster.clusterEnd);
+
+    // Gap before cluster
+    if (cStart > cursor) {
+      const gapMins = minsOf(cStart, cursor);
+      const gapPx = gapMargin(gapMins, now >= cStart);
+      if (now >= cursor && now <= cStart) {
+        return yPos + minsOf(now, cursor) * PX_PER_MIN;
+      }
+      yPos += gapPx;
+    }
+
+    // Cluster itself
+    const cDurMins = minsOf(cEnd, cStart);
+    const cHeight = cardHeight(cDurMins, now >= cEnd);
+    if (now >= cStart && now <= cEnd) {
+      return yPos + minsOf(now, cStart) * PX_PER_MIN;
+    }
+    yPos += cHeight;
+    cursor = new Date(Math.max(cursor.getTime(), cEnd.getTime()));
+  }
+  return yPos;
 }
 
 // Group overlapping timed events into clusters for side-by-side rendering.
@@ -560,6 +585,7 @@ function renderEvents() {
   const empty = document.getElementById('empty-state');
   const header = document.getElementById('date-header');
   const nowTime = document.getElementById('now-marker-time');
+  let currentMeetingInfo = null; // track for banner
 
   // Date header
   header.textContent = now.toLocaleDateString('en-US', {
@@ -590,13 +616,43 @@ function renderEvents() {
 
   // ── Separate all-day events ──
   let allDayHtml = '';
-  events.forEach((event, i) => {
+  events.forEach(event => {
     if (!event.start.dateTime) {
       allDayHtml += `<div class="all-day-chip">${escapeHtml(event.summary || '(No title)')}</div>`;
     }
   });
   if (allDayHtml) {
     html += `<div class="all-day-row">${allDayHtml}</div>`;
+  }
+
+  // ── Find current meetings for banner ──
+  const currentMeetings = [];
+  events.forEach(event => {
+    if (!event.start.dateTime) return;
+    const start = new Date(event.start.dateTime);
+    const end = new Date(event.end.dateTime);
+    if (now >= start && now < end) {
+      const progress = (now - start) / (end - start);
+      const minsLeft = (end - now) / 60000;
+      currentMeetings.push({ event, start, end, progress, minsLeft });
+    }
+  });
+  // Pick the one ending soonest
+  currentMeetings.sort((a, b) => a.end - b.end);
+  currentMeetingInfo = currentMeetings[0] || null;
+
+  if (currentMeetingInfo) {
+    const cm = currentMeetingInfo;
+    const countdown = `${Math.ceil(cm.minsLeft)}m left`;
+    html += `
+      <div id="current-meeting-banner">
+        <div class="banner-content">
+          <span class="banner-title">${escapeHtml(cm.event.summary || '(No title)')}</span>
+          <span class="banner-time">${fmt(cm.start)} · ${countdown}</span>
+        </div>
+        <div class="banner-progress" style="--banner-progress: ${(cm.progress * 100).toFixed(1)}%"></div>
+      </div>`;
+    structureKey += 'banner|';
   }
 
   // ── Timed events ──
@@ -626,12 +682,9 @@ function renderEvents() {
         animClass = ' meeting-done';
       }
     } else if (now >= start && now < end) {
-      state = 'current';
-      if (!nextUpId) nextUpId = `ev-${i}`;
-      progress = (now - start) / (end - start);
-      const minsLeft = (end - now) / 60000;
-      if (minsLeft <= 5) animClass = ' wrapping-up';
-      countdown = `${Math.ceil(minsLeft)}m left`;
+      // Current meetings are shown in the banner — skip from timeline
+      previousStates.add(key);
+      return '';
     } else {
       if (!nextUpId) nextUpId = `ev-${i}`;
       state = 'future';
@@ -675,16 +728,24 @@ function renderEvents() {
     const startTimeStr = fmt(start);
     const fullTimeStr = `${fmt(start)} – ${fmt(end)}`;
     const nextClass = (nextUpId === `ev-${i}`) ? ' next-up' : '';
-    // In overlap groups, offset cards that start later than the cluster's first event
-    const offsetPx = opts.grouped && opts.clusterStart
-      ? gapMargin((start - opts.clusterStart) / 60000)
-      : 0;
-    const spacingStyle = (opts.spacingPx || 0) > 0
-      ? `margin-top: ${Math.round(opts.spacingPx)}px;`
-      : (offsetPx > 0 ? `margin-top: ${Math.round(offsetPx)}px;` : '');
+    const spacingStyle = (opts.spacingPx || 0) > 0 ? `margin-top: ${Math.round(opts.spacingPx)}px;` : '';
+    const durationMins = minsOf(end, start);
+    const isCompact = durationMins * PX_PER_MIN < MIN_CARD_HEIGHT;
+    const compactClass = isCompact ? ' compact-card' : '';
+    let durationHeight = cardHeight(durationMins, state === 'past');
+    let durationStyle = `height: ${Math.round(durationHeight)}px;`;
+
+    // Override with absolute positioning for grouped overlap cards
+    if (opts.absoluteTop !== undefined) {
+      const gap = 4;
+      const pct = (100 / opts.totalColumns).toFixed(2);
+      const colWidth = `calc(${pct}% - ${gap}px)`;
+      const leftPos = `calc(${(opts.column * 100 / opts.totalColumns).toFixed(2)}% + ${gap / 2}px)`;
+      durationStyle = `position:absolute;top:${Math.round(opts.absoluteTop)}px;left:${leftPos};width:${colWidth};height:${Math.round(opts.absoluteHeight)}px;`;
+    }
     const progressStyle = state === 'current' ? `--progress: ${(progress * 100).toFixed(1)}%;` : '';
     const bounceDelay = animClass ? `animation-delay: ${(bounceCount++ * 0.4).toFixed(1)}s;` : '';
-    const allStyles = spacingStyle + cardStyle + progressStyle + bounceDelay;
+    const allStyles = spacingStyle + cardStyle + durationStyle + progressStyle + bounceDelay;
     const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
     const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${escapeHtml(key)}"` : '';
 
@@ -721,7 +782,7 @@ function renderEvents() {
     structureKey += `${i}:${state}${animClass}:${opts.grouped ? 'g' + opts.clusterIdx : 's'}|`;
 
     return `
-      <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}"${inlineStyle}${dismissAttr} data-expandable>
+      <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}${compactClass}"${inlineStyle}${dismissAttr} data-expandable>
         <div class="card-summary">
           ${avatarName ? `<div class="organizer-avatar"${locColor}>
             ${photoCache[avatarPerson.email] ? `<img class="avatar-img" src="${photoCache[avatarPerson.email]}" alt="">` : ''}
@@ -737,27 +798,33 @@ function renderEvents() {
     `;
   }
 
+  let nowPlayheadInserted = false;
+
   clusters.forEach((cluster, ci) => {
     const clusterStart = new Date(cluster.clusterStart);
     const firstEvent = cluster.events[0];
-    const firstStart = new Date(firstEvent.start.dateTime);
-    const firstEnd = new Date(firstEvent.end.dateTime);
-    const firstState = now >= firstEnd ? 'past' : (now >= firstStart ? 'current' : 'future');
 
     // Timeline connector before this cluster
     let spacingPx = 0;
-    if (firstState !== 'past' && clusterStart > cursor) {
+    if (clusterStart > cursor) {
       const gapMins = (clusterStart - cursor) / 60000;
-      spacingPx = gapMargin(gapMins);
-      if (gapMins >= 1) {
-        const gapStartsNow = Math.abs(cursor - now) < 60000;
-        const gapProgress = gapStartsNow ? Math.min(1, (now - cursor) / (clusterStart - cursor)) : -1;
-        const nowLineHtml = gapStartsNow ? `<div class="now-line" style="top:${(gapProgress * 100).toFixed(1)}%"></div>` : '';
+      const gapIsPast = now >= clusterStart;
+      spacingPx = gapMargin(gapMins, gapIsPast);
+
+      // Insert now-playhead if "now" falls in this gap
+      if (!nowPlayheadInserted && now >= cursor && now < clusterStart) {
+        const beforeNow = gapIsPast ? 0 : ((now - cursor) / 60000) * PX_PER_MIN;
+        const afterNow = gapIsPast ? spacingPx : ((clusterStart - now) / 60000) * PX_PER_MIN;
+        html += `<div class="timeline-connector" style="height: ${Math.round(beforeNow)}px;"><div class="timeline-line"></div></div>`;
+        html += `<div id="now-playhead"><div class="playhead-line"><div class="playhead-bar"></div></div></div>`;
+        html += `<div class="timeline-connector" style="height: ${Math.round(afterNow)}px;"><div class="timeline-line"></div><span class="timeline-label">${formatFreeTime((clusterStart - now) / 60000)}</span></div>`;
+        nowPlayheadInserted = true;
+        spacingPx = 0;
+      } else if (gapMins >= 1) {
         const label = formatFreeTime(gapMins);
         html += `
           <div class="timeline-connector" style="height: ${Math.round(spacingPx)}px;">
             <div class="timeline-line"></div>
-            ${nowLineHtml}
             <span class="timeline-label">${label}</span>
           </div>
         `;
@@ -766,20 +833,59 @@ function renderEvents() {
     }
 
     if (cluster.isOverlapping) {
-      // Render side-by-side
-      const groupStyle = spacingPx > 0 ? ` style="margin-top: ${Math.round(spacingPx)}px;"` : '';
-      html += `<div class="overlap-group"${groupStyle}>`;
+      // Render side-by-side with absolute positioning
+      const clusterDurationMins = (cluster.clusterEnd - cluster.clusterStart) / 60000;
+      const clusterHeight = cardHeight(clusterDurationMins, now >= new Date(cluster.clusterEnd));
+      const groupStyles = `height: ${Math.round(clusterHeight)}px;` +
+        (spacingPx > 0 ? ` margin-top: ${Math.round(spacingPx)}px;` : '');
+      html += `<div class="overlap-group" style="${groupStyles}">`;
+      // Greedy column packing: assign each event to the first column with space
+      // Use visual end (accounting for MIN_CARD_HEIGHT) to prevent visual overlap
+      const colVisualEnds = [];
+      const assignments = [];
+      const minCardMs = (MIN_CARD_HEIGHT / PX_PER_MIN) * 60000;
       cluster.events.forEach(ev => {
-        html += renderCard(ev, { spacingPx: 0, grouped: true, clusterIdx: ci, clusterStart: cluster.clusterStart });
+        const evStart = new Date(ev.start.dateTime).getTime();
+        const evEnd = new Date(ev.end.dateTime).getTime();
+        const visualEnd = Math.max(evEnd, evStart + minCardMs);
+        let col = colVisualEnds.findIndex(end => end <= evStart);
+        if (col === -1) {
+          col = colVisualEnds.length;
+          colVisualEnds.push(0);
+        }
+        colVisualEnds[col] = visualEnd;
+        assignments.push({ ev, col, evStart, evEnd });
+      });
+      const totalColumns = colVisualEnds.length;
+      assignments.forEach(({ ev, col, evStart, evEnd }) => {
+        const topOffset = minsOf(evStart, cluster.clusterStart) * PX_PER_MIN;
+        const evHeight = cardHeight(minsOf(evEnd, evStart), false);
+        html += renderCard(ev, {
+          spacingPx: 0, grouped: true, clusterIdx: ci,
+          clusterStart: cluster.clusterStart,
+          absoluteTop: topOffset, absoluteHeight: evHeight,
+          column: col, totalColumns
+        });
       });
       html += `</div>`;
     } else {
       html += renderCard(firstEvent, { spacingPx, grouped: false, clusterIdx: ci });
     }
 
+    // Insert playhead after a cluster that contains "now"
+    if (!nowPlayheadInserted && now >= new Date(cluster.clusterStart) && now <= new Date(cluster.clusterEnd)) {
+      html += `<div id="now-playhead"><div class="playhead-line"><div class="playhead-bar"></div></div></div>`;
+      nowPlayheadInserted = true;
+    }
+
     // Advance cursor to end of cluster
     cursor = new Date(Math.max(cursor.getTime(), cluster.clusterEnd));
   });
+
+  // Insert playhead after all events if not yet placed
+  if (!nowPlayheadInserted) {
+    html += `<div id="now-playhead"><div class="playhead-line"><div class="playhead-bar"></div></div></div>`;
+  }
 
   // Only rebuild DOM when structure changes (avoids restarting animations)
   if (structureKey !== lastStructureKey) {
@@ -823,19 +929,24 @@ function renderEvents() {
       const match = html.match(new RegExp(`id="${card.id}"[^>]*--progress:\\s*([\\d.]+)%`));
       if (match) card.style.setProperty('--progress', match[1] + '%');
     });
-    // Update now-line position in gap
-    const nowLine = list.querySelector('.now-line');
-    if (nowLine) {
-      const match = html.match(/now-line" style="top:([\d.]+)%/);
-      if (match) nowLine.style.top = match[1] + '%';
+  }
+
+  // Patch banner progress in-place when structure hasn't changed
+  if (structureKey === lastStructureKey) {
+    const bannerEl = list.querySelector('#current-meeting-banner');
+    if (bannerEl && currentMeetingInfo) {
+      bannerEl.querySelector('.banner-time').textContent =
+        `${fmt(currentMeetingInfo.start)} · ${Math.ceil(currentMeetingInfo.minsLeft)}m left`;
+      bannerEl.querySelector('.banner-progress').style.setProperty(
+        '--banner-progress', (currentMeetingInfo.progress * 100).toFixed(1) + '%');
     }
   }
 
-  // Auto-scroll to next event (respects user scroll — waits before snapping back)
-  if (nextUpId && !userScrolledRecently) {
-    const el = document.getElementById(nextUpId);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Auto-scroll: show the now-line with upcoming events visible below
+  if (!userScrolledRecently) {
+    const playhead = list.querySelector('#now-playhead');
+    if (playhead) {
+      playhead.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
 }
