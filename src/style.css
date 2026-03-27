@@ -122,50 +122,6 @@ html, body {
   flex-shrink: 0;
 }
 
-/* ── Current meeting banner ───────────────────────────── */
-#current-meeting-banner {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 10px;
-  margin-bottom: 8px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.banner-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  gap: 8px;
-}
-.banner-title {
-  font-weight: 600;
-  font-size: 0.95em;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.banner-time {
-  font-size: 0.8em;
-  color: rgba(255, 255, 255, 0.7);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.banner-progress {
-  height: 3px;
-  background: rgba(255, 255, 255, 0.08);
-}
-.banner-progress::after {
-  content: '';
-  display: block;
-  height: 100%;
-  width: var(--banner-progress, 0%);
-  background: rgba(255, 255, 255, 0.35);
-  transition: width 10s linear;
-}
-
 #events-list {
   flex: 1;
   overflow-y: auto;
@@ -378,16 +334,30 @@ html, body {
   background: rgba(255, 255, 255, 0.06);
   border: 4px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.06);
+  overflow: visible;
 }
 .event-card.current::before {
   content: '';
   position: absolute;
-  inset: 0;
-  width: var(--progress, 0%);
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--progress, 0%);
   background: rgba(255, 255, 255, 0.12);
   border-radius: inherit;
-  transition: width 10s linear;
+  transition: height 10s linear;
   pointer-events: none;
+}
+
+/* Now-line inside current meeting card */
+.card-now-line {
+  position: absolute;
+  top: var(--progress, 0%);
+  left: -16px;
+  right: -16px;
+  z-index: 2;
+  pointer-events: none;
+  transition: top 10s linear;
 }
 .event-card.current .event-title { color: #ffffff; }
 .event-card.current .event-time  { color: rgba(255, 255, 255, 0.7); }
@@ -433,6 +403,11 @@ html, body {
 .playhead-line::after {
   content: '▶';
 }
+
+/* Inward arrows on the now-line inside current meeting cards */
+.card-now-line .playhead-line::before { content: '▶'; }
+.card-now-line .playhead-line::after  { content: '◀'; }
+.card-now-line .playhead-line { margin: 0; }
 .playhead-bar {
   flex: 1;
   height: 2px;

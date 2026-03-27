@@ -585,7 +585,6 @@ function renderEvents() {
   const empty = document.getElementById('empty-state');
   const header = document.getElementById('date-header');
   const nowTime = document.getElementById('now-marker-time');
-  let currentMeetingInfo = null; // track for banner
 
   // Date header
   header.textContent = now.toLocaleDateString('en-US', {
@@ -625,36 +624,6 @@ function renderEvents() {
     html += `<div class="all-day-row">${allDayHtml}</div>`;
   }
 
-  // ── Find current meetings for banner ──
-  const currentMeetings = [];
-  events.forEach(event => {
-    if (!event.start.dateTime) return;
-    const start = new Date(event.start.dateTime);
-    const end = new Date(event.end.dateTime);
-    if (now >= start && now < end) {
-      const progress = (now - start) / (end - start);
-      const minsLeft = (end - now) / 60000;
-      currentMeetings.push({ event, start, end, progress, minsLeft });
-    }
-  });
-  // Pick the one ending soonest
-  currentMeetings.sort((a, b) => a.end - b.end);
-  currentMeetingInfo = currentMeetings[0] || null;
-
-  if (currentMeetingInfo) {
-    const cm = currentMeetingInfo;
-    const countdown = `${Math.ceil(cm.minsLeft)}m left`;
-    html += `
-      <div id="current-meeting-banner">
-        <div class="banner-content">
-          <span class="banner-title">${escapeHtml(cm.event.summary || '(No title)')}</span>
-          <span class="banner-time">${fmt(cm.start)} · ${countdown}</span>
-        </div>
-        <div class="banner-progress" style="--banner-progress: ${(cm.progress * 100).toFixed(1)}%"></div>
-      </div>`;
-    structureKey += 'banner|';
-  }
-
   // ── Timed events ──
   const timedEvents = events.filter(e => e.start.dateTime);
   const clusters = buildOverlapClusters(timedEvents);
@@ -682,9 +651,12 @@ function renderEvents() {
         animClass = ' meeting-done';
       }
     } else if (now >= start && now < end) {
-      // Current meetings are shown in the banner — skip from timeline
-      previousStates.add(key);
-      return '';
+      state = 'current';
+      if (!nextUpId) nextUpId = `ev-${i}`;
+      progress = (now - start) / (end - start);
+      const minsLeft = (end - now) / 60000;
+      if (minsLeft <= 5) animClass = ' wrapping-up';
+      countdown = `${Math.ceil(minsLeft)}m left`;
     } else {
       if (!nextUpId) nextUpId = `ev-${i}`;
       state = 'future';
@@ -793,6 +765,7 @@ function renderEvents() {
           </div>
           <div class="event-time"${timeColor}>${startTimeStr}${countdown && state === 'current' ? ` · ${countdown}` : ''}</div>
         </div>
+        ${state === 'current' ? `<div class="card-now-line"><div class="playhead-line"><div class="playhead-bar"></div></div></div>` : ''}
         <div class="card-details">${details.join('')}</div>
       </div>
     `;
@@ -872,9 +845,8 @@ function renderEvents() {
       html += renderCard(firstEvent, { spacingPx, grouped: false, clusterIdx: ci });
     }
 
-    // Insert playhead after a cluster that contains "now"
+    // Mark playhead as handled if "now" is inside this cluster (card draws its own now-line)
     if (!nowPlayheadInserted && now >= new Date(cluster.clusterStart) && now <= new Date(cluster.clusterEnd)) {
-      html += `<div id="now-playhead"><div class="playhead-line"><div class="playhead-bar"></div></div></div>`;
       nowPlayheadInserted = true;
     }
 
@@ -931,24 +903,6 @@ function renderEvents() {
     });
   }
 
-  // Patch banner progress in-place when structure hasn't changed
-  if (structureKey === lastStructureKey) {
-    const bannerEl = list.querySelector('#current-meeting-banner');
-    if (bannerEl && currentMeetingInfo) {
-      bannerEl.querySelector('.banner-time').textContent =
-        `${fmt(currentMeetingInfo.start)} · ${Math.ceil(currentMeetingInfo.minsLeft)}m left`;
-      bannerEl.querySelector('.banner-progress').style.setProperty(
-        '--banner-progress', (currentMeetingInfo.progress * 100).toFixed(1) + '%');
-    }
-  }
-
-  // Auto-scroll: show the now-line with upcoming events visible below
-  if (!userScrolledRecently) {
-    const playhead = list.querySelector('#now-playhead');
-    if (playhead) {
-      playhead.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }
 }
 
 function formatCountdown(ms) {
