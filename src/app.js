@@ -2,10 +2,11 @@
 // Replace with your Google Cloud OAuth2 Client ID
 // Instructions: https://console.cloud.google.com/apis/credentials
 const CLIENT_ID = '__GOOGLE_CLIENT_ID__';
-const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly https://www.googleapis.com/auth/directory.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly https://www.googleapis.com/auth/directory.readonly https://www.googleapis.com/auth/tasks.readonly';
 const DISCOVERY_DOCS = [
   'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
   'https://www.googleapis.com/discovery/v1/apis/people/v1/rest',
+  'https://www.googleapis.com/discovery/v1/apis/tasks/v1/rest',
 ];
 
 // ── State ───────────────────────────────────────────────
@@ -13,7 +14,7 @@ let tokenClient;
 let events = [];
 let updateTimer;
 let refreshTimer;
-let colorMode = localStorage.getItem('color_mode') || 'urgency';
+let showTasks = localStorage.getItem('show_tasks') !== 'false'; // default on
 let calendarColors = {};  // colorId → { background }
 let calendarMeta = {};    // calendarId → { backgroundColor }
 const photoCache = {};    // email → photo URL (or '' if none)
@@ -235,7 +236,7 @@ function silentReauth() {
 
 async function onAuthed() {
   showScreen(loadingScreen);
-  await Promise.all([fetchEvents(), fetchCalendarColors()]);
+  await Promise.all([fetchEvents(), fetchCalendarColors(), fetchTasks()]);
   showScreen(calendarScreen);
   // Defer render until browser has laid out the calendar screen
   requestAnimationFrame(() => {
@@ -382,6 +383,61 @@ async function fetchEvents(isRetry) {
   }
 }
 
+// ── Fetch Tasks ─────────────────────────────────────────
+async function fetchTasks() {
+  if (!showTasks || !gapi.client.tasks) return;
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  try {
+    // Get all task lists
+    const listsResp = await gapi.client.tasks.tasklists.list({ maxResults: 100 });
+    const taskLists = listsResp.result.items || [];
+
+    const fetches = taskLists.map(tl =>
+      gapi.client.tasks.tasks.list({
+        tasklist: tl.id,
+        dueMin: startOfDay.toISOString(),
+        dueMax: endOfDay.toISOString(),
+        showCompleted: false,
+        showHidden: false,
+        maxResults: 100,
+      }).then(resp => (resp.result.items || []).map(t => ({
+        ...t,
+        _taskListName: tl.title,
+      }))).catch(() => [])
+    );
+
+    const results = await Promise.all(fetches);
+    const tasks = results.flat().filter(t => t.status !== 'completed');
+
+    // Convert tasks to event-like objects and merge into events array
+    const taskEvents = tasks.map(t => ({
+      summary: t.title || '(No title)',
+      start: { date: t.due ? t.due.split('T')[0] : now.toISOString().split('T')[0] },
+      end: { date: t.due ? t.due.split('T')[0] : now.toISOString().split('T')[0] },
+      _isTask: true,
+      _taskListName: t._taskListName,
+      iCalUID: `task-${t.id}`,
+    }));
+
+    // Remove old task-events, add new ones
+    events = events.filter(e => !e._isTask).concat(taskEvents)
+      .sort((a, b) => {
+        const aTime = a.start.dateTime || a.start.date || '';
+        const bTime = b.start.dateTime || b.start.date || '';
+        return aTime.localeCompare(bTime);
+      });
+
+    lastStructureKey = '';
+    renderEvents();
+  } catch (err) {
+    console.warn('Failed to fetch tasks:', err);
+  }
+}
+
 // ── Render ──────────────────────────────────────────────
 
 // Group overlapping timed events into clusters for side-by-side rendering.
@@ -415,68 +471,6 @@ function buildOverlapClusters(timedEvents) {
 }
 
 // ── Color palettes ──────────────────────────────────────
-const COLOR_PALETTES = [
-  { name: 'Sky',      hex: '#4a9eff' },
-  { name: 'Violet',   hex: '#8b6cf6' },
-  { name: 'Teal',     hex: '#2bb5a0' },
-  { name: 'Lime',     hex: '#6abf40' },
-  { name: 'Gold',     hex: '#d4a017' },
-  { name: 'Ember',    hex: '#e8722a' },
-  { name: 'Sunset',   hex: '#e85d75' },
-  { name: 'Rose',     hex: '#d46493' },
-];
-
-let urgencyR = 74, urgencyG = 158, urgencyB = 255;
-
-function setUrgencyColor(hex) {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return;
-  urgencyR = rgb.r;
-  urgencyG = rgb.g;
-  urgencyB = rgb.b;
-  document.documentElement.style.setProperty('--urgency', hex);
-  document.documentElement.style.setProperty('--ur', urgencyR);
-  document.documentElement.style.setProperty('--ug', urgencyG);
-  document.documentElement.style.setProperty('--ub', urgencyB);
-  localStorage.setItem('urgency_color', hex);
-  document.querySelectorAll('.color-swatch').forEach(el => {
-    el.classList.toggle('selected', el.dataset.hex === hex);
-  });
-  lastStructureKey = '';
-  if (events.length) renderEvents();
-}
-
-function initColorPicker() {
-  const container = document.getElementById('color-options');
-  COLOR_PALETTES.forEach(p => {
-    const el = document.createElement('div');
-    el.className = 'color-swatch';
-    el.style.background = p.hex;
-    el.dataset.hex = p.hex;
-    el.title = p.name;
-    el.onclick = () => setUrgencyColor(p.hex);
-    container.appendChild(el);
-  });
-  const saved = localStorage.getItem('urgency_color') || '#4a9eff';
-  setUrgencyColor(saved);
-}
-
-function setColorMode(mode) {
-  colorMode = mode;
-  localStorage.setItem('color_mode', mode);
-  document.querySelectorAll('#color-mode-toggle .toggle-btn').forEach(el => {
-    el.classList.toggle('selected', el.dataset.mode === mode);
-  });
-  document.getElementById('urgency-section').classList.toggle('hidden', mode !== 'urgency');
-  lastStructureKey = '';
-  if (events.length) renderEvents();
-}
-
-function initColorMode() {
-  const saved = localStorage.getItem('color_mode') || 'urgency';
-  setColorMode(saved);
-}
-
 async function fetchCalendarColors() {
   try {
     const resp = await gapi.client.calendar.colors.get();
@@ -519,24 +513,48 @@ function initScale() {
   setScale(saved);
 }
 
+function setShowTasks(on) {
+  showTasks = on;
+  localStorage.setItem('show_tasks', on);
+  const toggle = document.getElementById('tasks-toggle');
+  if (toggle) toggle.checked = on;
+  lastStructureKey = '';
+  if (on && !DEMO_MODE && gapi?.client?.getToken()) {
+    fetchTasks();
+  } else if (on && DEMO_MODE) {
+    loadDemoTasks();
+  } else {
+    events = events.filter(e => !e._isTask);
+    renderEvents();
+  }
+}
+
+function initShowTasks() {
+  const saved = localStorage.getItem('show_tasks') !== 'false';
+  setShowTasks(saved);
+}
+
 function toggleSettings() {
   const panel = document.getElementById('settings-panel');
+  const scrim = document.getElementById('settings-scrim');
   panel.classList.toggle('hidden');
+  scrim.classList.toggle('hidden');
 }
 
 document.addEventListener('click', (e) => {
   const panel = document.getElementById('settings-panel');
+  const scrim = document.getElementById('settings-scrim');
   const btn = document.getElementById('settings-btn');
   if (!panel.classList.contains('hidden') &&
       !panel.contains(e.target) && !btn.contains(e.target)) {
     panel.classList.add('hidden');
+    scrim.classList.add('hidden');
   }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  initColorPicker();
-  initColorMode();
   initScale();
+  initShowTasks();
 });
 
 // Background opacity: 1.0 at 0 min, fades to 0 at ~120 min
@@ -678,7 +696,7 @@ function renderEvents() {
   const allDayEvents = events.filter(e => !e.start.dateTime);
   if (allDayEvents.length) {
     allDayRow.innerHTML = allDayEvents.map(e =>
-      `<div class="all-day-chip">${escapeHtml(e.summary || '(No title)')}</div>`
+      `<div class="all-day-chip${e._isTask ? ' task-chip' : ''}">${e._isTask ? '☑ ' : ''}${escapeHtml(e.summary || '(No title)')}</div>`
     ).join('');
     allDayRow.classList.remove('hidden');
   } else {
@@ -778,21 +796,16 @@ function renderEvents() {
       posStyle += `left:calc(${leftPct}% + ${gap / 2}px + 4px);width:calc(${colWidthPct}% - ${gap}px - 4px);right:auto;`;
     }
 
-    // Color styling — fill card with calendar or urgency color
+    // Color styling — fill card with calendar color
     let cardStyle = '';
     let timeColor = '';
     let titleColor = '';
 
     if (state === 'future' || state === 'current') {
-      let r, g, b;
-      if (colorMode === 'calendar') {
-        const rgb = hexToRgb(getEventColor(event));
-        r = rgb ? rgb.r : urgencyR;
-        g = rgb ? rgb.g : urgencyG;
-        b = rgb ? rgb.b : urgencyB;
-      } else {
-        r = urgencyR; g = urgencyG; b = urgencyB;
-      }
+      const rgb = hexToRgb(getEventColor(event));
+      const r = rgb ? rgb.r : 74;
+      const g = rgb ? rgb.g : 158;
+      const b = rgb ? rgb.b : 255;
       if (state === 'future') {
         const bgA = urgencyBgAlpha(minsUntil);
         const txt = urgencyTextColor(bgA, r, g, b);
@@ -800,7 +813,6 @@ function renderEvents() {
         timeColor = ` style="color: ${txt.sub}"`;
         cardStyle = `background: rgba(${r},${g},${b},${bgA.toFixed(3)});`;
       } else {
-        // Current: solid color fill
         const txt = urgencyTextColor(0.55, r, g, b);
         titleColor = ` style="color: ${txt.title}"`;
         timeColor = ` style="color: ${txt.sub}"`;
@@ -1004,15 +1016,10 @@ function showBriefing(futureEvents) {
     const start = new Date(event.start.dateTime);
     const end = new Date(event.end.dateTime);
 
-    let r, g, b;
-    if (colorMode === 'calendar') {
-      const rgb = hexToRgb(getEventColor(event));
-      r = rgb ? rgb.r : urgencyR;
-      g = rgb ? rgb.g : urgencyG;
-      b = rgb ? rgb.b : urgencyB;
-    } else {
-      r = urgencyR; g = urgencyG; b = urgencyB;
-    }
+    const rgb = hexToRgb(getEventColor(event));
+    const r = rgb ? rgb.r : 74;
+    const g = rgb ? rgb.g : 158;
+    const b = rgb ? rgb.b : 255;
 
     return `
       <div class="briefing-card" style="background: rgba(${r},${g},${b},0.35);">
@@ -1070,7 +1077,7 @@ function startTimers() {
   updateTimer = setInterval(renderEvents, 10000);
 
   if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(DEMO_MODE ? loadDemoEvents : fetchEvents, 60 * 1000);
+  refreshTimer = setInterval(DEMO_MODE ? loadDemoEvents : () => { fetchEvents(); fetchTasks(); }, 60 * 1000);
 
   scheduleMidnightRefresh();
 }
@@ -1256,10 +1263,38 @@ function loadDemoEvents() {
   renderEvents();
 }
 
+function loadDemoTasks() {
+  if (!showTasks) return;
+  const now = new Date();
+  const todayDate = now.toISOString().split('T')[0];
+  const demoTasks = [
+    {
+      summary: 'Submit expense report',
+      start: { date: todayDate },
+      end: { date: todayDate },
+      _isTask: true,
+      _taskListName: 'My Tasks',
+      iCalUID: 'task-demo-1',
+    },
+    {
+      summary: 'Review PR #42',
+      start: { date: todayDate },
+      end: { date: todayDate },
+      _isTask: true,
+      _taskListName: 'My Tasks',
+      iCalUID: 'task-demo-2',
+    },
+  ];
+  events = events.filter(e => !e._isTask).concat(demoTasks);
+  lastStructureKey = '';
+  renderEvents();
+}
+
 // ── Bootstrap ───────────────────────────────────────────
 if (DEMO_MODE) {
   showScreen(calendarScreen);
   loadDemoEvents();
+  loadDemoTasks();
   // Defer render until browser has laid out the calendar screen
   requestAnimationFrame(() => {
     lastStructureKey = '';
