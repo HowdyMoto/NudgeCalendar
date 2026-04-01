@@ -199,6 +199,14 @@ function showScreen(screen) {
   screen.classList.remove('hidden');
 }
 
+// Occasionally make "Nudge" dance on the auth screen
+const nudgeWord = document.getElementById('nudge-word');
+setInterval(() => {
+  if (authScreen.classList.contains('hidden')) return;
+  nudgeWord.classList.add('antsy');
+  setTimeout(() => nudgeWord.classList.remove('antsy'), 3200);
+}, 5000);
+
 // ── Google API Init ─────────────────────────────────────
 function gapiLoaded() {
   gapi.load('client', async () => {
@@ -242,6 +250,15 @@ function gisLoaded() {
 
 function handleAuth() {
   tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function handleLogout() {
+  const token = gapi.client.getToken();
+  if (token) google.accounts.oauth2.revoke(token.access_token);
+  gapi.client.setToken(null);
+  localStorage.removeItem('gapi_token');
+  toggleSettings();
+  showScreen(authScreen);
 }
 
 function silentReauth() {

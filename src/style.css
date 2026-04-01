@@ -59,6 +59,14 @@ html, body {
   margin-bottom: 8px;
 }
 
+#nudge-word {
+  display: inline-block;
+  color: var(--accent);
+}
+#nudge-word.antsy {
+  animation: ollie-continuous 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
 .auth-content p {
   color: var(--text-dim);
   font-size: 1rem;
@@ -808,6 +816,25 @@ html, body {
 }
 .settings-link:active {
   color: var(--text-dim);
+}
+
+.logout-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.logout-btn:active {
+  background: rgba(255, 107, 107, 0.18);
 }
 
 .toggle-group {

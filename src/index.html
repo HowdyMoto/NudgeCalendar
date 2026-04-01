@@ -28,8 +28,8 @@
     <!-- Auth screen -->
     <div id="auth-screen" class="screen">
       <div class="auth-content">
-        <h1>Nudge Calendar</h1>
-        <p>Your meetings, at a glance</p>
+        <h1><span id="nudge-word">Nudge</span> Calendar</h1>
+        <p>A playful, glanceable calendar for your phone. Keeps upcoming meetings visible while you're deep in the zone — with animations that grab your attention when it's time to move.</p>
         <button id="auth-btn" onclick="handleAuth()">
           <svg class="google-logo" viewBox="0 0 48 48" width="20" height="20">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -85,6 +85,8 @@
         <div class="settings-divider"></div>
         <div class="settings-version" id="app-version"></div>
         <a class="settings-link" href="privacy.html" target="_blank">Privacy policy</a>
+        <div class="settings-divider"></div>
+        <button id="logout-btn" class="logout-btn" onclick="handleLogout()">Sign out</button>
       </div>
       <div id="pull-indicator" class="pull-indicator">↻ Refresh</div>
       <div id="all-day-row" class="all-day-row hidden"></div>
