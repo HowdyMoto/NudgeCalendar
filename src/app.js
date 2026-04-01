@@ -123,11 +123,10 @@ function spawnThumbsUp(x, y) {
   el.textContent = '👍';
   el.style.left = `${x}px`;
   el.style.top = `${y}px`;
-  // Random horizontal drift so it feels physical
   const drift = (Math.random() - 0.5) * 60;
-  el.style.setProperty('--drift', `${drift}px`);
+  el.style.setProperty('--dx', `${drift}px`);
+  el.style.setProperty('--rot', `${drift * 0.3}deg`);
   document.body.appendChild(el);
-  // Clean up after both animations finish
   setTimeout(() => el.remove(), 1200);
 }
 
