@@ -68,11 +68,29 @@
         </div>
       </div>
       <header id="date-header"></header>
-      <div id="now-marker-time" class="now-time"></div>
       <div id="pull-indicator" class="pull-indicator">↻ Refresh</div>
-      <main id="events-list"></main>
+      <div id="all-day-row" class="all-day-row hidden"></div>
+      <main id="events-list" class="time-grid">
+        <div id="hour-gutter" class="hour-gutter"></div>
+        <div id="event-column" class="event-column">
+          <div id="now-line" class="now-line hidden">
+            <div class="now-line-dot"></div>
+            <div class="now-line-bar"></div>
+          </div>
+        </div>
+      </main>
       <div id="empty-state" class="hidden">
         <p>Nothing today</p>
+      </div>
+
+      <!-- Morning briefing overlay -->
+      <div id="briefing-overlay" class="briefing-overlay hidden">
+        <div class="briefing-scrim"></div>
+        <div class="briefing-content">
+          <div class="briefing-header">Today's meetings</div>
+          <div id="briefing-cards" class="briefing-cards"></div>
+          <button id="briefing-dismiss" class="briefing-dismiss hidden">Got it</button>
+        </div>
       </div>
     </div>
 

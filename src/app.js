@@ -19,15 +19,11 @@ let calendarMeta = {};    // calendarId → { backgroundColor }
 const photoCache = {};    // email → photo URL (or '' if none)
 let lastStructureKey = '';
 
-// Timeline scaling
-const PX_PER_MIN = 4;
-const MIN_CARD_HEIGHT = 48;
-const PLAYHEAD_OFFSET = 80; // px from top of scroll container where "now" sits
-
-function cardHeight(durationMins, isPast) {
-  if (isPast) return Math.max(MIN_CARD_HEIGHT, Math.min(80, durationMins * PX_PER_MIN));
-  return Math.max(MIN_CARD_HEIGHT, durationMins * PX_PER_MIN);
-}
+// Timeline scaling — computed dynamically to fit viewport
+let PX_PER_MIN = 4;
+const MIN_CARD_HEIGHT = 40;
+let dayStartHour = 0;
+let dayEndHour = 24;
 
 function minsOf(a, b) { return (a - b) / 60000; }
 
@@ -97,10 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Milestone animation tracking
-// Keys are event IDs (summary + start time), values are Sets of fired thresholds
 const firedMilestones = new Map();
 const dismissedEvents = new Set();
-const previousStates = new Set(); // event keys that were 'current' last render
+const previousStates = new Set();
 const ONE_SHOT_ANIM_CLASSES = ['throb-small', 'throb-medium', 'throb-large', 'meeting-done'];
 
 function eventKey(event) {
@@ -116,7 +111,7 @@ function checkMilestone(key, minsUntil) {
   for (const t of thresholds) {
     if (minsUntil <= t && !fired.has(t)) {
       fired.add(t);
-      newMilestone = t; // return the one just crossed
+      newMilestone = t;
     }
   }
   return newMilestone;
@@ -165,7 +160,6 @@ function showScreen(screen) {
 function gapiLoaded() {
   gapi.load('client', async () => {
     await gapi.client.init({ discoveryDocs: DISCOVERY_DOCS });
-    // Check for stored token
     const stored = localStorage.getItem('gapi_token');
     if (stored) {
       gapi.client.setToken(JSON.parse(stored));
@@ -195,6 +189,7 @@ async function onAuthed() {
   await Promise.all([fetchEvents(), fetchCalendarColors()]);
   showScreen(calendarScreen);
   startTimers();
+  checkMorningBriefing();
 }
 
 // ── Fetch profile photos via People API ──────────────────
@@ -203,22 +198,18 @@ async function fetchPhotos(emails) {
   const uncached = emails.filter(e => e && !(e in photoCache));
   if (uncached.length === 0) return;
 
-  // Mark as pending so we don't re-fetch
   uncached.forEach(e => { photoCache[e] = ''; });
 
-  // Try multiple sources in order: contacts, other contacts, then directory
   await fetchPhotosFromContacts(uncached);
 
   let missing = uncached.filter(e => !photoCache[e]);
   if (missing.length) await fetchPhotosFromOtherContacts(missing);
 
-  // Log results
   const found = uncached.filter(e => photoCache[e]);
   const notFound = uncached.filter(e => !photoCache[e]);
   if (found.length) console.log('[photos] found:', found);
   if (notFound.length) console.log('[photos] not found:', notFound);
 
-  // Re-render if any photos were found
   if (found.length) {
     lastStructureKey = '';
     renderEvents();
@@ -244,8 +235,6 @@ async function fetchPhotosFromContacts(emails) {
 }
 
 async function fetchPhotosFromOtherContacts(emails) {
-  // "Other contacts" are people you've emailed/met with but haven't saved.
-  // The API doesn't support search, so we list and match by email.
   try {
     let pageToken = '';
     const emailSet = new Set(emails.map(e => e.toLowerCase()));
@@ -266,14 +255,11 @@ async function fetchPhotosFromOtherContacts(emails) {
         }
       }
       pageToken = resp.result.nextPageToken || '';
-      // Stop if we found everyone or there are no more pages
     } while (pageToken && emailSet.size > 0);
   } catch (e) {
     console.warn('[photos] otherContacts lookup failed:', e);
   }
 }
-
-
 
 // ── Fetch Events (from all visible calendars) ───────────
 async function fetchEvents() {
@@ -283,16 +269,13 @@ async function fetchEvents() {
   endOfDay.setDate(endOfDay.getDate() + 1);
 
   try {
-    // Get all calendars the user can see
     const calList = await gapi.client.calendar.calendarList.list();
     const calendars = (calList.result.items || []).filter(c => c.selected !== false);
 
-    // Store each calendar's color
     calendars.forEach(c => {
       calendarMeta[c.id] = { backgroundColor: c.backgroundColor };
     });
 
-    // Fetch events from all calendars in parallel
     const fetches = calendars.map(c =>
       gapi.client.calendar.events.list({
         calendarId: c.id,
@@ -302,7 +285,6 @@ async function fetchEvents() {
         orderBy: 'startTime',
         maxResults: 50,
       }).then(resp => {
-        // Tag each event with its source calendar ID
         return (resp.result.items || []).map(ev => ({
           ...ev,
           _calendarId: c.id,
@@ -315,7 +297,6 @@ async function fetchEvents() {
     events = results.flat()
       .filter(e => {
         if (e.status === 'cancelled') return false;
-        // Deduplicate by iCalUID (same event across calendars shares this)
         const uid = e.iCalUID;
         if (uid && seen.has(uid)) return false;
         if (uid) seen.add(uid);
@@ -330,7 +311,6 @@ async function fetchEvents() {
     lastStructureKey = '';
     renderEvents();
 
-    // Kick off background photo fetch for all avatar people
     const emails = events.map(e => pickAvatarPerson(e).email).filter(Boolean);
     if (emails.length) fetchPhotos([...new Set(emails)]);
   } catch (err) {
@@ -344,49 +324,7 @@ async function fetchEvents() {
 
 // ── Render ──────────────────────────────────────────────
 
-// Calculate top margin to represent the time gap before an event.
-// Uses sqrt scaling so short gaps are visible but long gaps don't blow out.
-// Cap at 140px so a full day still fits on screen.
-function gapMargin(gapMinutes, isPast) {
-  if (gapMinutes <= 0) return 0;
-  if (isPast) return Math.min(40, Math.sqrt(gapMinutes) * 6);
-  return gapMinutes * PX_PER_MIN;
-}
-
-// Compute the Y position of "now" in the timeline by walking clusters/gaps
-function computeNowPosition(clusters, now) {
-  if (clusters.length === 0) return 0;
-  let yPos = 0;
-  let cursor = new Date(clusters[0].clusterStart);
-
-  for (const cluster of clusters) {
-    const cStart = new Date(cluster.clusterStart);
-    const cEnd = new Date(cluster.clusterEnd);
-
-    // Gap before cluster
-    if (cStart > cursor) {
-      const gapMins = minsOf(cStart, cursor);
-      const gapPx = gapMargin(gapMins, now >= cStart);
-      if (now >= cursor && now <= cStart) {
-        return yPos + minsOf(now, cursor) * PX_PER_MIN;
-      }
-      yPos += gapPx;
-    }
-
-    // Cluster itself
-    const cDurMins = minsOf(cEnd, cStart);
-    const cHeight = cardHeight(cDurMins, now >= cEnd);
-    if (now >= cStart && now <= cEnd) {
-      return yPos + minsOf(now, cStart) * PX_PER_MIN;
-    }
-    yPos += cHeight;
-    cursor = new Date(Math.max(cursor.getTime(), cEnd.getTime()));
-  }
-  return yPos;
-}
-
 // Group overlapping timed events into clusters for side-by-side rendering.
-// Returns array of { events: [...], isOverlapping, clusterStart, clusterEnd }.
 function buildOverlapClusters(timedEvents) {
   const clusters = [];
   let cluster = null;
@@ -396,18 +334,15 @@ function buildOverlapClusters(timedEvents) {
     const end = new Date(ev.end.dateTime).getTime();
 
     if (!cluster || start >= cluster.clusterEnd) {
-      // Finalize previous cluster
       if (cluster) clusters.push(cluster);
       cluster = { events: [ev], clusterStart: start, clusterEnd: end };
     } else {
-      // Overlaps with current cluster
       cluster.events.push(ev);
       cluster.clusterEnd = Math.max(cluster.clusterEnd, end);
     }
   }
   if (cluster) clusters.push(cluster);
 
-  // Mark clusters with 2+ events as overlapping
   for (const c of clusters) {
     c.isOverlapping = c.events.length > 1;
   }
@@ -457,7 +392,6 @@ function initColorPicker() {
     el.onclick = () => setUrgencyColor(p.hex);
     container.appendChild(el);
   });
-  // Restore saved color
   const saved = localStorage.getItem('urgency_color') || '#4a9eff';
   setUrgencyColor(saved);
 }
@@ -483,22 +417,19 @@ async function fetchCalendarColors() {
     const resp = await gapi.client.calendar.colors.get();
     calendarColors = resp.result.event || {};
   } catch (e) {
-    // Non-critical, fall back to urgency colors
+    // Non-critical
   }
 }
 
 function getEventColor(event) {
-  // 1. Event-level color override (user changed this specific event's color)
   const colorId = event.colorId;
   if (colorId && calendarColors[colorId]) {
     return calendarColors[colorId].background;
   }
-  // 2. Calendar-level color (the calendar this event belongs to)
   const calId = event._calendarId;
   if (calId && calendarMeta[calId]) {
     return calendarMeta[calId].backgroundColor;
   }
-  // 3. Fallback
   return '#039be5';
 }
 
@@ -528,7 +459,6 @@ function toggleSettings() {
   panel.classList.toggle('hidden');
 }
 
-// Close settings when tapping outside
 document.addEventListener('click', (e) => {
   const panel = document.getElementById('settings-panel');
   const btn = document.getElementById('settings-btn');
@@ -545,13 +475,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Background opacity: 1.0 at 0 min, fades to 0 at ~120 min
-// Decay rate controls how fast it fades. At 0.02, it's ~0.3 at 60 min, ~0.09 at 120 min.
 function urgencyBgAlpha(minsUntil) {
   if (minsUntil <= 0) return 1;
   return Math.max(0, Math.exp(-0.02 * minsUntil));
 }
 
-// Relative luminance of an sRGB color (0–1)
 function luminance(r, g, b) {
   const [rs, gs, bs] = [r, g, b].map(c => {
     c /= 255;
@@ -560,105 +488,203 @@ function luminance(r, g, b) {
   return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
 
-// Compute effective text colors by blending the card bg over the page bg (#0a0a0f)
-// and picking white or dark text based on contrast ratio.
 function urgencyTextColor(bgAlpha, r, g, b) {
-  // Blend card color over page background (#0a0a0f ≈ 10,10,15)
   const effR = Math.round(10 + (r - 10) * bgAlpha);
   const effG = Math.round(10 + (g - 10) * bgAlpha);
   const effB = Math.round(15 + (b - 15) * bgAlpha);
   const bgLum = luminance(effR, effG, effB);
 
-  // Contrast ratio with white (lum=1) vs dark (#1a1a2a, lum≈0.01)
   const whiteContrast = (1 + 0.05) / (bgLum + 0.05);
   const darkContrast = (bgLum + 0.05) / (0.01 + 0.05);
 
-  // Pick whichever text color gives better contrast
   return whiteContrast > darkContrast
     ? { title: '#ffffff', sub: 'rgba(255,255,255,0.75)' }
     : { title: '#1a1a2a', sub: '#2a2a3a' };
 }
 
+// ── Time grid rendering ─────────────────────────────────
+
+function computeDayRange(timedEvents) {
+  const now = new Date();
+  let earliest = now.getHours();
+  let latest = now.getHours() + 1;
+
+  timedEvents.forEach(e => {
+    const s = new Date(e.start.dateTime);
+    const end = new Date(e.end.dateTime);
+    earliest = Math.min(earliest, s.getHours());
+    latest = Math.max(latest, end.getHours() + (end.getMinutes() > 0 ? 1 : 0));
+  });
+
+  // Pad by 1 hour on each side, clamp to 0–24
+  dayStartHour = Math.max(0, earliest - 1);
+  dayEndHour = Math.min(24, latest + 1);
+
+  // Compute PX_PER_MIN to fit the available height
+  const list = document.getElementById('events-list');
+  const availableHeight = list.clientHeight;
+  const totalMinutes = (dayEndHour - dayStartHour) * 60;
+  PX_PER_MIN = Math.max(0.5, availableHeight / totalMinutes);
+}
+
+let lastGutterKey = '';
+
+function renderHourGutter() {
+  const gutter = document.getElementById('hour-gutter');
+  const column = document.getElementById('event-column');
+  const totalHeight = (dayEndHour - dayStartHour) * 60 * PX_PER_MIN;
+
+  gutter.style.height = `${totalHeight}px`;
+  column.style.height = `${totalHeight}px`;
+
+  // Only rebuild when range or scale changes
+  const gutterKey = `${dayStartHour}-${dayEndHour}-${PX_PER_MIN.toFixed(3)}`;
+  if (gutterKey === lastGutterKey) return;
+  lastGutterKey = gutterKey;
+
+  gutter.innerHTML = '';
+  column.querySelectorAll('.hour-line').forEach(el => el.remove());
+
+  for (let h = dayStartHour; h <= dayEndHour; h++) {
+    const topPx = (h - dayStartHour) * 60 * PX_PER_MIN;
+
+    if (h > dayStartHour && h < dayEndHour) {
+      const label = document.createElement('div');
+      label.className = 'hour-label';
+      label.style.top = `${topPx}px`;
+      const displayHour = h % 12 || 12;
+      const ampm = h < 12 ? 'AM' : 'PM';
+      label.textContent = `${displayHour} ${ampm}`;
+      gutter.appendChild(label);
+    }
+
+    if (h > dayStartHour && h < dayEndHour) {
+      const line = document.createElement('div');
+      line.className = 'hour-line';
+      line.style.top = `${topPx}px`;
+      column.appendChild(line);
+    }
+  }
+}
+
+function timeToY(date) {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(dayStartHour, 0, 0, 0);
+  return minsOf(date, startOfDay) * PX_PER_MIN;
+}
+
 function renderEvents() {
   const now = new Date();
   const list = document.getElementById('events-list');
+  const column = document.getElementById('event-column');
   const empty = document.getElementById('empty-state');
   const header = document.getElementById('date-header');
-  const nowTime = document.getElementById('now-marker-time');
+  const allDayRow = document.getElementById('all-day-row');
 
   // Date header
   header.textContent = now.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric'
   });
 
-  // Current time
-  nowTime.textContent = now.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit'
-  });
-
   if (events.length === 0) {
     list.classList.add('hidden');
     empty.classList.remove('hidden');
+    allDayRow.classList.add('hidden');
     return;
   }
 
   list.classList.remove('hidden');
   empty.classList.add('hidden');
 
-  // Track the "cursor" — what time the previous event ended (or now, whichever is later)
-  let cursor = now;
-  let nextUpId = null;
-  let html = '';
-  let structureKey = '';
+  // Compute visible range + scale to fit viewport, then render gutter
+  const timedEvents = events.filter(e => e.start.dateTime);
+  computeDayRange(timedEvents);
+  renderHourGutter();
+
+  // Update now-line position
+  const nowLine = document.getElementById('now-line');
+  const nowY = timeToY(now);
+  nowLine.style.top = `${Math.round(nowY)}px`;
+  nowLine.classList.remove('hidden');
 
   const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-  // ── Separate all-day events ──
-  let allDayHtml = '';
-  events.forEach(event => {
-    if (!event.start.dateTime) {
-      allDayHtml += `<div class="all-day-chip">${escapeHtml(event.summary || '(No title)')}</div>`;
-    }
-  });
-  if (allDayHtml) {
-    html += `<div class="all-day-row">${allDayHtml}</div>`;
+  // ── All-day events ──
+  const allDayEvents = events.filter(e => !e.start.dateTime);
+  if (allDayEvents.length) {
+    allDayRow.innerHTML = allDayEvents.map(e =>
+      `<div class="all-day-chip">${escapeHtml(e.summary || '(No title)')}</div>`
+    ).join('');
+    allDayRow.classList.remove('hidden');
+  } else {
+    allDayRow.classList.add('hidden');
   }
 
   // ── Timed events ──
-  const timedEvents = events.filter(e => e.start.dateTime);
   const clusters = buildOverlapClusters(timedEvents);
 
-  // Map each timed event back to its original index in `events` for stable IDs
-  const eventIndex = new Map();
-  events.forEach((e, i) => { if (e.start.dateTime) eventIndex.set(e, i); });
+  // Build a structure key to detect when DOM needs rebuilding
+  let structureKey = '';
   let bounceCount = 0;
+  const cardDataList = [];
 
-  function renderCard(event, opts) {
-    const i = eventIndex.get(event);
+  // Assign columns for overlapping events
+  clusters.forEach((cluster) => {
+    const minCardMs = (MIN_CARD_HEIGHT / PX_PER_MIN) * 60000;
+
+    if (cluster.isOverlapping) {
+      // Greedy column packing
+      const colVisualEnds = [];
+      cluster.events.forEach(ev => {
+        const evStart = new Date(ev.start.dateTime).getTime();
+        const evEnd = new Date(ev.end.dateTime).getTime();
+        const visualEnd = Math.max(evEnd, evStart + minCardMs);
+        let col = colVisualEnds.findIndex(end => end <= evStart);
+        if (col === -1) {
+          col = colVisualEnds.length;
+          colVisualEnds.push(0);
+        }
+        colVisualEnds[col] = visualEnd;
+        cardDataList.push({ event: ev, column: col, totalColumns: 0, _cluster: cluster });
+      });
+      // Set totalColumns for this cluster
+      const total = colVisualEnds.length;
+      cardDataList.forEach(cd => {
+        if (cd._cluster === cluster && cd.totalColumns === 0) cd.totalColumns = total;
+      });
+    } else {
+      cardDataList.push({ event: cluster.events[0], column: 0, totalColumns: 1, _cluster: cluster });
+    }
+  });
+
+  // Build HTML for each card
+  const cardsHtml = cardDataList.map((cd, idx) => {
+    const event = cd.event;
     const start = new Date(event.start.dateTime);
     const end = new Date(event.end.dateTime);
+    const key = eventKey(event);
+    const minsUntil = (start - now) / 60000;
+    const durationMins = minsOf(end, start);
 
     let state = '';
     let countdown = '';
     let animClass = '';
-    let minsUntil = (start - now) / 60000;
-    const key = eventKey(event);
     let progress = 0;
 
     if (now >= end) {
       state = 'past';
-      if (previousStates.has(key)) {
-        animClass = ' meeting-done';
-      }
+      if (previousStates.has(key)) animClass = ' meeting-done';
     } else if (now >= start && now < end) {
       state = 'current';
-      if (!nextUpId) nextUpId = `ev-${i}`;
       progress = (now - start) / (end - start);
       const minsLeft = (end - now) / 60000;
-      if (minsLeft <= 5) animClass = ' wrapping-up';
+      if (!dismissedEvents.has(key)) {
+        animClass = ' antsy';
+      } else if (minsLeft <= 5) {
+        animClass = ' wrapping-up';
+      }
       countdown = `${Math.ceil(minsLeft)}m left`;
     } else {
-      if (!nextUpId) nextUpId = `ev-${i}`;
       state = 'future';
       countdown = formatCountdown(start - now);
       const milestone = checkMilestone(key, minsUntil);
@@ -673,13 +699,26 @@ function renderEvents() {
       }
     }
 
-    // Card color styling
+    // Positioning
+    const topPx = timeToY(start);
+    const heightPx = Math.max(MIN_CARD_HEIGHT, durationMins * PX_PER_MIN);
+    const isCompact = heightPx <= 56;
+    const gap = 4;
+    const colWidthPct = (100 / cd.totalColumns).toFixed(2);
+    const leftPct = (cd.column * 100 / cd.totalColumns).toFixed(2);
+    const overlapClass = cd.totalColumns > 1 ? ' overlap-col' : '';
+
+    let posStyle = `top:${Math.round(topPx)}px;height:${Math.round(heightPx)}px;`;
+    if (cd.totalColumns > 1) {
+      posStyle += `left:calc(${leftPct}% + ${gap / 2}px + 4px);width:calc(${colWidthPct}% - ${gap}px - 4px);right:auto;`;
+    }
+
+    // Color styling — fill card with calendar or urgency color
     let cardStyle = '';
     let timeColor = '';
     let titleColor = '';
-    let locColor = '';
 
-    if (state === 'future') {
+    if (state === 'future' || state === 'current') {
       let r, g, b;
       if (colorMode === 'calendar') {
         const rgb = hexToRgb(getEventColor(event));
@@ -689,41 +728,33 @@ function renderEvents() {
       } else {
         r = urgencyR; g = urgencyG; b = urgencyB;
       }
-      const bgA = urgencyBgAlpha(minsUntil);
-      const txt = urgencyTextColor(bgA, r, g, b);
-      titleColor = ` style="color: ${txt.title}"`;
-      timeColor = ` style="color: ${txt.sub}"`;
-      locColor = ` style="color: ${txt.sub}"`;
-      cardStyle = `background: rgba(${r},${g},${b},${bgA.toFixed(3)});`;
+      if (state === 'future') {
+        const bgA = urgencyBgAlpha(minsUntil);
+        const txt = urgencyTextColor(bgA, r, g, b);
+        titleColor = ` style="color: ${txt.title}"`;
+        timeColor = ` style="color: ${txt.sub}"`;
+        cardStyle = `background: rgba(${r},${g},${b},${bgA.toFixed(3)});`;
+      } else {
+        // Current: solid color fill
+        const txt = urgencyTextColor(0.55, r, g, b);
+        titleColor = ` style="color: ${txt.title}"`;
+        timeColor = ` style="color: ${txt.sub}"`;
+        cardStyle = `background: rgba(${r},${g},${b},0.55);`;
+      }
     }
 
-    const startTimeStr = fmt(start);
-    const fullTimeStr = `${fmt(start)} – ${fmt(end)}`;
-    const nextClass = (nextUpId === `ev-${i}`) ? ' next-up' : '';
-    const spacingStyle = (opts.spacingPx || 0) > 0 ? `margin-top: ${Math.round(opts.spacingPx)}px;` : '';
-    const durationMins = minsOf(end, start);
-    const isCompact = durationMins * PX_PER_MIN < MIN_CARD_HEIGHT;
-    const compactClass = isCompact ? ' compact-card' : '';
-    let durationHeight = cardHeight(durationMins, state === 'past');
-    let durationStyle = `height: ${Math.round(durationHeight)}px;`;
-
-    // Override with absolute positioning for grouped overlap cards
-    if (opts.absoluteTop !== undefined) {
-      const gap = 4;
-      const pct = (100 / opts.totalColumns).toFixed(2);
-      const colWidth = `calc(${pct}% - ${gap}px)`;
-      const leftPos = `calc(${(opts.column * 100 / opts.totalColumns).toFixed(2)}% + ${gap / 2}px)`;
-      durationStyle = `position:absolute;top:${Math.round(opts.absoluteTop)}px;left:${leftPos};width:${colWidth};height:${Math.round(opts.absoluteHeight)}px;`;
-    }
     const progressStyle = state === 'current' ? `--progress: ${(progress * 100).toFixed(1)}%;` : '';
     const bounceDelay = animClass ? `animation-delay: ${(bounceCount++ * 0.4).toFixed(1)}s;` : '';
-    const allStyles = spacingStyle + cardStyle + durationStyle + progressStyle + bounceDelay;
-    const inlineStyle = allStyles ? ` style="${allStyles}"` : '';
+    const allStyles = posStyle + cardStyle + progressStyle + bounceDelay;
     const dismissAttr = animClass === ' antsy' ? ` data-dismiss="${escapeHtml(key)}"` : '';
+    const compactClass = isCompact ? ' compact-card' : '';
 
     const avatarPerson = pickAvatarPerson(event);
     const avatarName = avatarPerson.displayName || avatarPerson.email || '';
     const avatarInitials = getInitials(avatarName);
+
+    const startTimeStr = fmt(start);
+    const fullTimeStr = `${fmt(start)} – ${fmt(end)}`;
 
     const details = [];
     details.push(`<div class="detail-row"><span class="detail-icon">🕐</span> ${fullTimeStr}</div>`);
@@ -751,121 +782,36 @@ function renderEvents() {
     }
 
     if (state === 'current') previousStates.add(key); else previousStates.delete(key);
-    structureKey += `${i}:${state}${animClass}:${opts.grouped ? 'g' + opts.clusterIdx : 's'}|`;
+    structureKey += `${idx}:${state}${animClass}|`;
 
     return `
-      <div id="ev-${i}" class="event-card ${state}${nextClass}${animClass}${compactClass}"${inlineStyle}${dismissAttr} data-expandable>
+      <div id="ev-${idx}" class="event-card ${state}${animClass}${compactClass}${overlapClass}" style="${allStyles}"${dismissAttr} data-expandable>
         <div class="card-summary">
-          ${avatarName ? `<div class="organizer-avatar"${locColor}>
+          ${avatarName ? `<div class="organizer-avatar">
             ${photoCache[avatarPerson.email] ? `<img class="avatar-img" src="${photoCache[avatarPerson.email]}" alt="">` : ''}
             <span class="avatar-initials">${escapeHtml(avatarInitials)}</span>
           </div>` : ''}
           <div class="card-main">
             <div class="event-title"${titleColor}>${escapeHtml(event.summary || '(No title)')}</div>
+            <div class="event-time"${timeColor}>${startTimeStr}${countdown ? ` · ${countdown}` : ''}</div>
           </div>
-          <div class="event-time"${timeColor}>${startTimeStr}${countdown && state === 'current' ? ` · ${countdown}` : ''}</div>
         </div>
-        ${state === 'current' ? `<div class="card-now-line"><div class="playhead-line"><div class="playhead-bar"></div></div></div>` : ''}
         <div class="card-details">${details.join('')}</div>
       </div>
     `;
-  }
+  }).join('');
 
-  let nowPlayheadInserted = false;
-
-  clusters.forEach((cluster, ci) => {
-    const clusterStart = new Date(cluster.clusterStart);
-    const firstEvent = cluster.events[0];
-
-    // Timeline connector before this cluster
-    let spacingPx = 0;
-    if (clusterStart > cursor) {
-      const gapMins = (clusterStart - cursor) / 60000;
-      const gapIsPast = now >= clusterStart;
-      spacingPx = gapMargin(gapMins, gapIsPast);
-
-      // Insert now-playhead if "now" falls in this gap
-      if (!nowPlayheadInserted && now >= cursor && now < clusterStart) {
-        const beforeNow = gapIsPast ? 0 : ((now - cursor) / 60000) * PX_PER_MIN;
-        const afterNow = gapIsPast ? spacingPx : ((clusterStart - now) / 60000) * PX_PER_MIN;
-        html += `<div class="timeline-connector" style="height: ${Math.round(beforeNow)}px;"><div class="timeline-line"></div></div>`;
-        html += `<div id="now-playhead"><div class="playhead-line"><div class="playhead-bar"></div></div></div>`;
-        html += `<div class="timeline-connector" style="height: ${Math.round(afterNow)}px;"><div class="timeline-line"></div><span class="timeline-label">${formatFreeTime((clusterStart - now) / 60000)}</span></div>`;
-        nowPlayheadInserted = true;
-        spacingPx = 0;
-      } else if (gapMins >= 1) {
-        const label = formatFreeTime(gapMins);
-        html += `
-          <div class="timeline-connector" style="height: ${Math.round(spacingPx)}px;">
-            <div class="timeline-line"></div>
-            <span class="timeline-label">${label}</span>
-          </div>
-        `;
-        spacingPx = 0;
-      }
-    }
-
-    if (cluster.isOverlapping) {
-      // Render side-by-side with absolute positioning
-      const clusterDurationMins = (cluster.clusterEnd - cluster.clusterStart) / 60000;
-      const clusterHeight = cardHeight(clusterDurationMins, now >= new Date(cluster.clusterEnd));
-      const groupStyles = `height: ${Math.round(clusterHeight)}px;` +
-        (spacingPx > 0 ? ` margin-top: ${Math.round(spacingPx)}px;` : '');
-      html += `<div class="overlap-group" style="${groupStyles}">`;
-      // Greedy column packing: assign each event to the first column with space
-      // Use visual end (accounting for MIN_CARD_HEIGHT) to prevent visual overlap
-      const colVisualEnds = [];
-      const assignments = [];
-      const minCardMs = (MIN_CARD_HEIGHT / PX_PER_MIN) * 60000;
-      cluster.events.forEach(ev => {
-        const evStart = new Date(ev.start.dateTime).getTime();
-        const evEnd = new Date(ev.end.dateTime).getTime();
-        const visualEnd = Math.max(evEnd, evStart + minCardMs);
-        let col = colVisualEnds.findIndex(end => end <= evStart);
-        if (col === -1) {
-          col = colVisualEnds.length;
-          colVisualEnds.push(0);
-        }
-        colVisualEnds[col] = visualEnd;
-        assignments.push({ ev, col, evStart, evEnd });
-      });
-      const totalColumns = colVisualEnds.length;
-      assignments.forEach(({ ev, col, evStart, evEnd }) => {
-        const topOffset = minsOf(evStart, cluster.clusterStart) * PX_PER_MIN;
-        const evHeight = cardHeight(minsOf(evEnd, evStart), false);
-        html += renderCard(ev, {
-          spacingPx: 0, grouped: true, clusterIdx: ci,
-          clusterStart: cluster.clusterStart,
-          absoluteTop: topOffset, absoluteHeight: evHeight,
-          column: col, totalColumns
-        });
-      });
-      html += `</div>`;
-    } else {
-      html += renderCard(firstEvent, { spacingPx, grouped: false, clusterIdx: ci });
-    }
-
-    // Mark playhead as handled if "now" is inside this cluster (card draws its own now-line)
-    if (!nowPlayheadInserted && now >= new Date(cluster.clusterStart) && now <= new Date(cluster.clusterEnd)) {
-      nowPlayheadInserted = true;
-    }
-
-    // Advance cursor to end of cluster
-    cursor = new Date(Math.max(cursor.getTime(), cluster.clusterEnd));
-  });
-
-  // Insert playhead after all events if not yet placed
-  if (!nowPlayheadInserted) {
-    html += `<div id="now-playhead"><div class="playhead-line"><div class="playhead-bar"></div></div></div>`;
-  }
-
-  // Only rebuild DOM when structure changes (avoids restarting animations)
+  // Only rebuild DOM when structure changes
   if (structureKey !== lastStructureKey) {
-    list.innerHTML = html;
+    // Remove old event cards but keep hour-lines and now-line
+    column.querySelectorAll('.event-card').forEach(el => el.remove());
+
+    // Insert cards
+    column.insertAdjacentHTML('beforeend', cardsHtml);
     lastStructureKey = structureKey;
 
-    // Tap to dismiss continuous throb (consumes the click — no expand)
-    list.querySelectorAll('[data-dismiss]').forEach(el => {
+    // Tap to dismiss continuous throb
+    column.querySelectorAll('[data-dismiss]').forEach(el => {
       el.addEventListener('click', (e) => {
         if (el.classList.contains('antsy')) {
           e.stopImmediatePropagation();
@@ -876,59 +822,56 @@ function renderEvents() {
 
     // Remove one-shot animation classes after they play
     const animSelector = ONE_SHOT_ANIM_CLASSES.map(c => '.' + c).join(', ');
-    list.querySelectorAll(animSelector).forEach(el => {
+    column.querySelectorAll(animSelector).forEach(el => {
       el.addEventListener('animationend', () => {
         el.classList.remove(...ONE_SHOT_ANIM_CLASSES);
       }, { once: true });
     });
 
     // Tap to expand/collapse card details
-    list.querySelectorAll('[data-expandable]').forEach(el => {
+    column.querySelectorAll('[data-expandable]').forEach(el => {
       el.addEventListener('click', () => {
         el.classList.toggle('expanded');
       });
     });
-  } else {
-    // Patch only dynamic values in-place
-    list.querySelectorAll('.event-time').forEach(el => {
-      const card = el.closest('.event-card');
-      if (!card) return;
-      const idx = card.id?.replace('ev-', '');
-      const match = html.match(new RegExp(`id="ev-${idx}"[\\s\\S]*?class="event-time"[^>]*>([^<]+)<`));
-      if (match) el.textContent = match[1];
-    });
-    list.querySelectorAll('.event-card.current').forEach(card => {
-      const match = html.match(new RegExp(`id="${card.id}"[^>]*--progress:\\s*([\\d.]+)%`));
-      if (match) card.style.setProperty('--progress', match[1] + '%');
-    });
-  }
 
+    // No scrolling needed — day fits viewport
+  } else {
+    // Patch dynamic values in-place
+    column.querySelectorAll('.event-card').forEach(card => {
+      const idx = card.id?.replace('ev-', '');
+      // Update countdown text
+      const timeEl = card.querySelector('.event-time');
+      if (timeEl) {
+        const match = cardsHtml.match(new RegExp(`id="ev-${idx}"[\\s\\S]*?class="event-time"[^>]*>([^<]+)<`));
+        if (match) timeEl.textContent = match[1];
+      }
+      // Update progress
+      if (card.classList.contains('current')) {
+        const match = cardsHtml.match(new RegExp(`id="ev-${idx}"[^>]*--progress:\\s*([\\d.]+)%`));
+        if (match) card.style.setProperty('--progress', match[1] + '%');
+      }
+    });
+
+    // Update now-line position smoothly
+    nowLine.style.top = `${Math.round(nowY)}px`;
+  }
 }
 
 function formatCountdown(ms) {
   if (ms <= 0) return 'now';
   const mins = Math.floor(ms / 60000);
-  const secs = Math.floor((ms % 60000) / 1000);
   if (mins >= 60) {
     const hrs = Math.floor(mins / 60);
     const m = mins % 60;
     return `in ${hrs}h ${m}m`;
   }
   if (mins > 0) return `in ${mins}m`;
+  const secs = Math.floor((ms % 60000) / 1000);
   return `in ${secs}s`;
 }
 
-function formatFreeTime(mins) {
-  if (mins < 60) return `${Math.round(mins)}m free`;
-  const hrs = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
-  if (m === 0) return `${hrs}h free`;
-  return `${hrs}h ${m}m free`;
-}
-
-
 // Pick the most relevant person to show as the card avatar.
-// If I organized it, show the most relevant attendee. Otherwise show the organizer.
 function pickAvatarPerson(event) {
   const organizer = event.organizer || {};
   const attendees = event.attendees || [];
@@ -938,20 +881,14 @@ function pickAvatarPerson(event) {
     return organizer;
   }
 
-  // Filter to non-self, non-resource attendees
   const others = attendees.filter(a => !a.self && !a.resource);
   if (others.length === 0) return organizer;
 
-  // Score each attendee for relevance:
-  // - accepted > tentative > needsAction > declined
-  // - fewer total attendees = more relevant (1:1 > large meeting)
-  // - having a displayName is better (more personal)
   const statusScore = { accepted: 4, tentative: 3, needsAction: 2, declined: 0 };
   others.sort((a, b) => {
     const sa = statusScore[a.responseStatus] || 1;
     const sb = statusScore[b.responseStatus] || 1;
     if (sa !== sb) return sb - sa;
-    // Prefer named attendees
     if (a.displayName && !b.displayName) return -1;
     if (!a.displayName && b.displayName) return 1;
     return 0;
@@ -962,7 +899,6 @@ function pickAvatarPerson(event) {
 
 function getInitials(name) {
   if (!name) return '';
-  // Handle email addresses
   if (name.includes('@')) name = name.split('@')[0].replace(/[._]/g, ' ');
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
@@ -973,17 +909,104 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ── Morning Briefing ────────────────────────────────────
+
+function todayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function checkMorningBriefing() {
+  const ackDate = localStorage.getItem('briefing_ack_date');
+  if (ackDate === todayString()) return;
+
+  // Only show if there are future timed events today
+  const now = new Date();
+  const futureEvents = events.filter(e => e.start.dateTime && new Date(e.start.dateTime) > now);
+  if (futureEvents.length === 0) return;
+
+  showBriefing(futureEvents);
+}
+
+function showBriefing(futureEvents) {
+  const overlay = document.getElementById('briefing-overlay');
+  const cardsContainer = document.getElementById('briefing-cards');
+  const dismissBtn = document.getElementById('briefing-dismiss');
+
+  const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  cardsContainer.innerHTML = futureEvents.map(event => {
+    const start = new Date(event.start.dateTime);
+    const end = new Date(event.end.dateTime);
+
+    let r, g, b;
+    if (colorMode === 'calendar') {
+      const rgb = hexToRgb(getEventColor(event));
+      r = rgb ? rgb.r : urgencyR;
+      g = rgb ? rgb.g : urgencyG;
+      b = rgb ? rgb.b : urgencyB;
+    } else {
+      r = urgencyR; g = urgencyG; b = urgencyB;
+    }
+
+    return `
+      <div class="briefing-card" style="background: rgba(${r},${g},${b},0.35);">
+        <div class="bc-time">${fmt(start)} – ${fmt(end)}</div>
+        <div class="bc-title">${escapeHtml(event.summary || '(No title)')}</div>
+      </div>
+    `;
+  }).join('');
+
+  overlay.classList.remove('hidden');
+
+  // Staggered cascade animation
+  const cards = cardsContainer.querySelectorAll('.briefing-card');
+  cards.forEach((card, i) => {
+    setTimeout(() => {
+      card.classList.add('cascade-in');
+    }, i * 300);
+  });
+
+  // Show "Got it" button after all cards have landed
+  const totalDelay = cards.length * 300 + 600;
+  setTimeout(() => {
+    dismissBtn.classList.remove('hidden');
+    dismissBtn.classList.add('visible');
+  }, totalDelay);
+
+  // Dismiss handlers
+  const dismiss = () => {
+    localStorage.setItem('briefing_ack_date', todayString());
+    overlay.classList.add('dismissing');
+    overlay.addEventListener('animationend', () => {
+      overlay.classList.add('hidden');
+      overlay.classList.remove('dismissing');
+      dismissBtn.classList.add('hidden');
+      dismissBtn.classList.remove('visible');
+    }, { once: true });
+  };
+
+  dismissBtn.addEventListener('click', dismiss, { once: true });
+
+  // Also dismiss if user scrolls the calendar behind
+  const list = document.getElementById('events-list');
+  const scrollDismiss = () => {
+    if (!overlay.classList.contains('hidden')) {
+      dismiss();
+      list.removeEventListener('scroll', scrollDismiss);
+    }
+  };
+  list.addEventListener('scroll', scrollDismiss, { passive: true });
+}
+
 // ── Timers ──────────────────────────────────────────────
 function startTimers() {
-  // Update display every 10 seconds
   if (updateTimer) clearInterval(updateTimer);
   updateTimer = setInterval(renderEvents, 10000);
 
-  // Refresh from API every 5 minutes (demo reloads demo data)
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(DEMO_MODE ? loadDemoEvents : fetchEvents, 60 * 1000);
 
-  // At midnight, refresh for new day
   scheduleMidnightRefresh();
 }
 
@@ -1014,11 +1037,19 @@ async function requestWakeLock() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     requestWakeLock();
-    // Refresh when coming back to foreground
     if (gapi?.client?.getToken()) {
-      fetchEvents();
+      fetchEvents().then(() => checkMorningBriefing());
+    } else if (DEMO_MODE) {
+      checkMorningBriefing();
     }
   }
+});
+
+// ── Resize → recalculate scale ──────────────────────────
+window.addEventListener('resize', () => {
+  lastStructureKey = '';
+  lastGutterKey = '';
+  if (events.length) renderEvents();
 });
 
 // ── Service Worker ──────────────────────────────────────
@@ -1030,7 +1061,6 @@ if ('serviceWorker' in navigator) {
 const DEMO_MODE = !CLIENT_ID || CLIENT_ID.startsWith('__');
 
 function loadDemoEvents() {
-
   const now = new Date();
   const today = (h, m) => {
     const d = new Date(now);
@@ -1040,26 +1070,24 @@ function loadDemoEvents() {
   const nowH = now.getHours();
   const nowM = now.getMinutes();
 
-  // Demo event-level colors (Google's colorId mapping)
   calendarColors = {
-    '1':  { background: '#7986cb' }, // Lavender
-    '2':  { background: '#33b679' }, // Sage
-    '3':  { background: '#8e24aa' }, // Grape
-    '4':  { background: '#e67c73' }, // Flamingo
-    '5':  { background: '#f6bf26' }, // Banana
-    '6':  { background: '#f4511e' }, // Tangerine
-    '7':  { background: '#039be5' }, // Peacock
-    '8':  { background: '#616161' }, // Graphite
-    '9':  { background: '#3f51b5' }, // Blueberry
-    '10': { background: '#0b8043' }, // Basil
-    '11': { background: '#d50000' }, // Tomato
+    '1':  { background: '#7986cb' },
+    '2':  { background: '#33b679' },
+    '3':  { background: '#8e24aa' },
+    '4':  { background: '#e67c73' },
+    '5':  { background: '#f6bf26' },
+    '6':  { background: '#f4511e' },
+    '7':  { background: '#039be5' },
+    '8':  { background: '#616161' },
+    '9':  { background: '#3f51b5' },
+    '10': { background: '#0b8043' },
+    '11': { background: '#d50000' },
   };
 
-  // Demo calendar-level colors (simulates different calendars)
   calendarMeta = {
-    'work':     { backgroundColor: '#039be5' }, // Peacock blue
-    'personal': { backgroundColor: '#7986cb' }, // Lavender
-    'family':   { backgroundColor: '#33b679' }, // Sage green
+    'work':     { backgroundColor: '#039be5' },
+    'personal': { backgroundColor: '#7986cb' },
+    'family':   { backgroundColor: '#33b679' },
   };
 
   events = [
@@ -1165,12 +1193,11 @@ function loadDemoEvents() {
 
 // ── Bootstrap ───────────────────────────────────────────
 if (DEMO_MODE) {
-  // Skip Google auth, show demo data
   showScreen(calendarScreen);
   loadDemoEvents();
   startTimers();
+  checkMorningBriefing();
 } else {
-  // Load Google API scripts
   (function loadGoogleAPIs() {
     const gapiScript = document.createElement('script');
     gapiScript.src = 'https://apis.google.com/js/api.js';
