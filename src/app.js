@@ -117,6 +117,16 @@ function checkMilestone(key, minsUntil) {
   return newMilestone;
 }
 
+function spawnThumbsUp(x, y) {
+  const el = document.createElement('div');
+  el.className = 'thumbs-up';
+  el.textContent = '👍';
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
 function dismissEvent(key, e) {
   dismissedEvents.add(key);
   const card = document.querySelector(`[data-dismiss="${CSS.escape(key)}"]`);
@@ -130,6 +140,9 @@ function dismissEvent(key, e) {
       card.style.setProperty('--tilt-x', `${yPct * -18}deg`);
       card.style.setProperty('--tilt-y', `${xPct * 18}deg`);
     }
+
+    // Thumbs-up confirmation floats up from tap point
+    if (e) spawnThumbsUp(e.clientX, e.clientY);
 
     card.classList.add('tickled');
     const fallback = setTimeout(() => renderEvents(), 500);
@@ -188,8 +201,14 @@ async function onAuthed() {
   showScreen(loadingScreen);
   await Promise.all([fetchEvents(), fetchCalendarColors()]);
   showScreen(calendarScreen);
-  startTimers();
-  checkMorningBriefing();
+  // Defer render until browser has laid out the calendar screen
+  requestAnimationFrame(() => {
+    lastStructureKey = '';
+    lastGutterKey = '';
+    renderEvents();
+    startTimers();
+    checkMorningBriefing();
+  });
 }
 
 // ── Fetch profile photos via People API ──────────────────
@@ -1200,8 +1219,14 @@ function loadDemoEvents() {
 if (DEMO_MODE) {
   showScreen(calendarScreen);
   loadDemoEvents();
-  startTimers();
-  checkMorningBriefing();
+  // Defer render until browser has laid out the calendar screen
+  requestAnimationFrame(() => {
+    lastStructureKey = '';
+    lastGutterKey = '';
+    renderEvents();
+    startTimers();
+    checkMorningBriefing();
+  });
 } else {
   (function loadGoogleAPIs() {
     const gapiScript = document.createElement('script');
