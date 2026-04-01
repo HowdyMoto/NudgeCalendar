@@ -790,6 +790,18 @@ html, body {
   text-align: center;
 }
 
+.settings-link {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 4px;
+  text-decoration: none;
+}
+.settings-link:active {
+  color: var(--text-dim);
+}
+
 .toggle-group {
   display: flex;
   gap: 4px;
