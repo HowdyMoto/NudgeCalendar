@@ -1,25 +1,32 @@
 # Today — Desk Calendar
 
-A minimal PWA that turns your phone into an always-on desk calendar. Connects to Google Calendar and shows today's events with live countdowns, color-coded urgency, overlapping meeting columns, and playful animations.
+A PWA that turns your phone into an always-on desk calendar. Connects to Google Calendar and shows today's schedule in an Apple/Google Calendar-style day view, with animated alerts that make sure you never miss a meeting.
 
 **Live app:** [https://howdymoto.github.io/Calendar/](https://howdymoto.github.io/Calendar/)
 
 ## Features
 
-- **Live countdowns** — events shift from calm to urgent as they approach
-- **All-day events** — shown as compact chips pinned to the top
-- **Current meeting progress** — the card fills left-to-right as the meeting progresses
-- **Wrapping-up nudge** — warm amber glow when 5 minutes remain in the current meeting
-- **Meeting done celebration** — a delightful animation when a meeting ends
-- **Overlapping meetings** — displayed side-by-side with staggered start times
-- **Bounce animations** — upcoming events bounce with increasing urgency; tap to dismiss with a 3D press effect
+### Meeting alerts
+- **Morning briefing** — on first open of the day, meetings cascade in one-by-one with bounce animations; tap "Got it" to acknowledge your schedule
+- **Active meeting acknowledgment** — meetings already in progress bounce until you tap them, so you know you're supposed to be in one
+- **Approaching meeting alerts** — upcoming events bounce with increasing urgency at 30, 15, and 3 minutes out; tap to dismiss with a 3D press effect
+- **Wrapping-up nudge** — pulse animation when 5 minutes remain in the current meeting
+
+### Day view
+- **Time-grid layout** — hour labels on the left, meetings positioned proportionally by start/end time (like Apple/Google Calendar)
+- **Auto-fit** — the day scales to fill your screen without scrolling, showing only the hours that matter
+- **Now line** — a red line marks the current time across the grid
+- **Overlapping meetings** — displayed side-by-side in columns
+- **All-day events** — shown as compact chips above the grid
+- **Color fill** — events filled with your chosen urgency color or per-calendar colors
+
+### General
 - **Pull-to-refresh** — pull down to refresh events
 - **Auto-refresh** — pulls new events every 5 minutes, resets at midnight
 - **Screen wake lock** — keeps the display on while charging
 - **PWA** — installs to your home screen, runs fullscreen with no browser chrome
 - **Adjustable display size** — scale the UI up or down for your device
 - **Color palettes** — choose your urgency color or use calendar colors
-- **Google-branded sign-in** — properly branded OAuth button
 - **Demo mode** — works out of the box with sample data (no Google account needed)
 
 ## Quick Start
