@@ -185,13 +185,30 @@ function gapiLoaded() {
   });
 }
 
+let reauthResolve = null;
+
+function saveToken() {
+  localStorage.setItem('gapi_token', JSON.stringify(gapi.client.getToken()));
+}
+
 function gisLoaded() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: (response) => {
+      if (reauthResolve) {
+        const resolve = reauthResolve;
+        reauthResolve = null;
+        if (response.error) {
+          resolve(false);
+        } else {
+          saveToken();
+          resolve(true);
+        }
+        return;
+      }
       if (response.error) return;
-      localStorage.setItem('gapi_token', JSON.stringify(gapi.client.getToken()));
+      saveToken();
       onAuthed();
     },
   });
@@ -199,6 +216,22 @@ function gisLoaded() {
 
 function handleAuth() {
   tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function silentReauth() {
+  // Reject any prior pending reauth
+  if (reauthResolve) reauthResolve(false);
+  return new Promise((resolve) => {
+    reauthResolve = resolve;
+    tokenClient.requestAccessToken({ prompt: '' });
+    // Timeout: if GIS never calls back (popup blocked, etc.), give up
+    setTimeout(() => {
+      if (reauthResolve === resolve) {
+        reauthResolve = null;
+        resolve(false);
+      }
+    }, 10000);
+  });
 }
 
 async function onAuthed() {
@@ -285,7 +318,7 @@ async function fetchPhotosFromOtherContacts(emails) {
 }
 
 // ── Fetch Events (from all visible calendars) ───────────
-async function fetchEvents() {
+async function fetchEvents(isRetry) {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfDay = new Date(startOfDay);
@@ -338,7 +371,12 @@ async function fetchEvents() {
     if (emails.length) fetchPhotos([...new Set(emails)]);
   } catch (err) {
     console.error('Failed to fetch events:', err);
-    if (err.status === 401) {
+    if (err.status === 401 && !isRetry) {
+      const ok = await silentReauth();
+      if (ok) return fetchEvents(true);
+      localStorage.removeItem('gapi_token');
+      showScreen(authScreen);
+    } else if (err.status === 401) {
       localStorage.removeItem('gapi_token');
       showScreen(authScreen);
     }
