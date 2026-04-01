@@ -1129,13 +1129,26 @@ window.addEventListener('resize', () => {
   if (events.length) renderEvents();
 });
 
+// ── Update overlay ──────────────────────────────────────
+function showUpdateOverlay() {
+  const overlay = document.createElement('div');
+  overlay.className = 'update-overlay';
+  overlay.innerHTML = `
+    <div class="update-icon">✨</div>
+    <div class="update-text">Updating...</div>
+  `;
+  document.body.appendChild(overlay);
+  // Reload after animation plays
+  setTimeout(() => window.location.reload(), 1800);
+}
+
 // ── Service Worker ──────────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
-  // Reload when a new version activates (push-to-update)
+  // Show update overlay then reload when a new version activates
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type === 'SW_UPDATED') {
-      window.location.reload();
+      showUpdateOverlay();
     }
   });
 }

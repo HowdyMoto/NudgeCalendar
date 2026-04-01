@@ -641,6 +641,44 @@ html, body {
   100% { transform: translate(calc(-50% + var(--dx)), 400%) scale(0.8, 1.3) rotate(var(--rot)); opacity: 0; }
 }
 
+/* ── Update overlay ──────────────────────────────────── */
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  animation: update-fade-in 0.4s ease forwards;
+}
+
+@keyframes update-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.update-icon {
+  font-size: 3em;
+  animation: update-sparkle 1.4s ease-in-out infinite;
+}
+
+@keyframes update-sparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25%      { transform: scale(1.2) rotate(-8deg); }
+  50%      { transform: scale(1) rotate(0deg); }
+  75%      { transform: scale(1.2) rotate(8deg); }
+}
+
+.update-text {
+  margin-top: 12px;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
 /* ── Loading ─────────────────────────────────────────── */
 #loading-screen {
   align-items: center;
