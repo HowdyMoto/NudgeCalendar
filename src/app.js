@@ -119,17 +119,42 @@ function checkMilestone(key, minsUntil) {
   return newMilestone;
 }
 
+const positiveEmojis = [
+  '👍', '🚀', '💪', '🔥', '⚡', '🎯', '🫡', '🤘', '✌️',
+  '😎', '🥳', '🫶', '💅', '🦾', '👊', '🤙', '🙌',
+  '🎸', '🏆', '💥', '✨', '🤌', '🫰', '🧠', '💯',
+];
+
 function spawnThumbsUp(x, y) {
   const el = document.createElement('div');
   el.className = 'thumbs-up';
-  el.textContent = '👍';
+  el.textContent = positiveEmojis[Math.floor(Math.random() * positiveEmojis.length)];
   el.style.left = `${x}px`;
   el.style.top = `${y}px`;
-  const drift = (Math.random() - 0.5) * 60;
-  el.style.setProperty('--dx', `${drift}px`);
-  el.style.setProperty('--rot', `${drift * 0.3}deg`);
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 1200);
+
+  const dx = (Math.random() - 0.5) * 200;
+  const rot = dx * 0.3;
+  // Physics: launch up then fall with gravity
+  const duration = 2100;
+  const launchVy = -620;  // initial upward velocity (px/s)
+  const gravity = 1000;    // px/s²
+  const frames = 32;
+  const keyframes = [];
+  for (let i = 0; i <= frames; i++) {
+    const t = i / frames;
+    const sec = t * duration / 1000;
+    const py = launchVy * sec + 0.5 * gravity * sec * sec;
+    const px = dx * t;
+    const r = rot * t;
+    const opacity = t < 0.1 ? t / 0.1 : Math.max(0, 1 - (t - 0.5) * 2);
+    keyframes.push({
+      transform: `translate(calc(-50% + ${px}px), calc(-50% + ${py}px)) rotate(${r}deg)`,
+      opacity,
+    });
+  }
+  const anim = el.animate(keyframes, { duration, easing: 'linear', fill: 'forwards' });
+  anim.onfinish = () => el.remove();
 }
 
 function dismissEvent(key, e) {
@@ -745,6 +770,13 @@ function renderEvents() {
     }
   });
 
+  // Check if any future event is close enough to be antsy (will grab attention)
+  const hasAntsyNext = cardDataList.some(cd => {
+    const s = new Date(cd.event.start.dateTime);
+    const m = (s - now) / 60000;
+    return m > 0 && m <= 3 && !dismissedEvents.has(eventKey(cd.event));
+  });
+
   // Build HTML for each card
   const cardsHtml = cardDataList.map((cd, idx) => {
     const event = cd.event;
@@ -769,7 +801,15 @@ function renderEvents() {
       if (!dismissedEvents.has(key)) {
         animClass = ' antsy';
       } else if (minsLeft <= 5) {
-        animClass = ' wrapping-up';
+        animClass = hasAntsyNext ? ' wrapping-up' : ' wrapping-up-urgent';
+        // Vibrate once at the 5-min mark when nothing next is grabbing attention
+        if (!hasAntsyNext) {
+          const wrapKey = `wrap5_${key}`;
+          if (!firedMilestones.has(wrapKey)) {
+            firedMilestones.set(wrapKey, true);
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
+          }
+        }
       }
       countdown = `${Math.ceil(minsLeft)}m left`;
     } else {
@@ -1063,7 +1103,10 @@ function showBriefing(futureEvents) {
     }, { once: true });
   };
 
-  dismissBtn.addEventListener('click', dismiss, { once: true });
+  dismissBtn.addEventListener('click', (e) => {
+    spawnThumbsUp(e.clientX, e.clientY);
+    dismiss();
+  }, { once: true });
 
   // Also dismiss if user scrolls the calendar behind
   const list = document.getElementById('events-list');
