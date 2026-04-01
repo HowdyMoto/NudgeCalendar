@@ -1,4 +1,4 @@
-# Today – Desk Calendar Setup
+# Nudge — Setup
 
 ## 1. Create Google Cloud OAuth Credentials
 
@@ -67,7 +67,7 @@ iOS doesn't have a native "stay awake while charging" option, but you can:
 2. Optionally, use **Shortcuts automation** to auto-launch the app when charging:
    - Open **Shortcuts** → **Automation** tab → **+**
    - Select **Charger** → **Is Connected** → Next
-   - Add action: **Open App** → choose the "Today" home screen app
+   - Add action: **Open App** → choose the "Nudge" home screen app
    - Turn off "Ask Before Running"
 
 Now whenever your iPhone connects to a charger, it automatically opens the calendar.

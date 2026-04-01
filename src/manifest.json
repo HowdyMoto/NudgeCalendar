@@ -1,7 +1,7 @@
 {
-  "name": "Today – Desk Calendar",
-  "short_name": "Today",
-  "description": "Minimal desk calendar display for your day",
+  "name": "Nudge",
+  "short_name": "Nudge",
+  "description": "Your meetings, at a glance",
   "start_url": ".",
   "display": "standalone",
   "orientation": "any",

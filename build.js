@@ -59,7 +59,7 @@ function generateIcon(size) {
   // Day number
   const day = new Date().getDate();
   ctx.fillStyle = '#6e9fff';
-  ctx.font = `bold ${size * 0.5}px sans-serif`;
+  ctx.font = `bold ${size * 0.65}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(day), size / 2, size / 2 + size * 0.03);
@@ -76,7 +76,7 @@ const fctx = fav.getContext('2d');
 fctx.fillStyle = '#0a0a0f';
 fctx.beginPath(); fctx.arc(16, 16, 16, 0, Math.PI * 2); fctx.fill();
 fctx.fillStyle = '#6e9fff';
-fctx.font = 'bold 18px sans-serif';
+fctx.font = 'bold 22px sans-serif';
 fctx.textAlign = 'center'; fctx.textBaseline = 'middle';
 fctx.fillText(String(new Date().getDate()), 16, 17);
 fs.writeFileSync(path.join(DIST, 'favicon.ico'), fav.toBuffer('image/png'));

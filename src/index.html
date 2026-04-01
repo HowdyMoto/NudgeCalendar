@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <title>Today</title>
+  <title>Nudge</title>
 
   <!-- PWA / iOS fullscreen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Today">
+  <meta name="apple-mobile-web-app-title" content="Nudge">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0a0a0f">
   <link rel="manifest" href="manifest.json">
@@ -28,8 +28,8 @@
     <!-- Auth screen -->
     <div id="auth-screen" class="screen">
       <div class="auth-content">
-        <h1>Today</h1>
-        <p>Your desk calendar</p>
+        <h1>Nudge</h1>
+        <p>Your meetings, at a glance</p>
         <button id="auth-btn" onclick="handleAuth()">
           <svg class="google-logo" viewBox="0 0 48 48" width="20" height="20">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -104,7 +104,7 @@
       <div id="briefing-overlay" class="briefing-overlay hidden">
         <div class="briefing-scrim"></div>
         <div class="briefing-content">
-          <div class="briefing-header">Today's meetings</div>
+          <div class="briefing-header">Your day</div>
           <div id="briefing-cards" class="briefing-cards"></div>
           <button id="briefing-dismiss" class="briefing-dismiss hidden">Got it</button>
         </div>

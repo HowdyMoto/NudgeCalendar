@@ -1,6 +1,6 @@
-# Today — Desk Calendar
+# Nudge
 
-A PWA that turns your phone into an always-on desk calendar. Connects to Google Calendar and shows today's schedule in an Apple/Google Calendar-style day view, with animated alerts that make sure you never miss a meeting.
+A PWA that makes sure you never miss a meeting. Connects to Google Calendar and shows your day in an Apple/Google Calendar-style view, with playful animated alerts that nudge you before, during, and at the start of each day.
 
 **Live app:** [https://howdymoto.github.io/Calendar/](https://howdymoto.github.io/Calendar/)
 
