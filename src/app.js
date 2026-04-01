@@ -1,6 +1,7 @@
 // ── Configuration ───────────────────────────────────────
 // Replace with your Google Cloud OAuth2 Client ID
 // Instructions: https://console.cloud.google.com/apis/credentials
+const APP_VERSION = '__APP_VERSION__';
 const CLIENT_ID = '__GOOGLE_CLIENT_ID__';
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly https://www.googleapis.com/auth/directory.readonly https://www.googleapis.com/auth/tasks.readonly';
 const DISCOVERY_DOCS = [
@@ -556,6 +557,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initScale();
   initShowTasks();
 });
+
+// Set version — script is at end of body so DOM is ready
+const verEl = document.getElementById('app-version');
+if (verEl) verEl.textContent = `v${APP_VERSION}`;
 
 // Background opacity: 1.0 at 0 min, fades to 0 at ~120 min
 function urgencyBgAlpha(minsUntil) {
@@ -1127,6 +1132,12 @@ window.addEventListener('resize', () => {
 // ── Service Worker ──────────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Reload when a new version activates (push-to-update)
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type === 'SW_UPDATED') {
+      window.location.reload();
+    }
+  });
 }
 
 // ── Demo Mode ───────────────────────────────────────────

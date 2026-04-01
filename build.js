@@ -106,8 +106,10 @@ console.log('  App files copied');
 const appJsPath = path.join(DIST, 'app.js');
 let appJs = fs.readFileSync(appJsPath, 'utf-8');
 appJs = appJs.replace('__GOOGLE_CLIENT_ID__', env.GOOGLE_CLIENT_ID);
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+appJs = appJs.replace('__APP_VERSION__', pkg.version);
 fs.writeFileSync(appJsPath, appJs);
-console.log('  Client ID injected');
+console.log(`  Client ID + version (${pkg.version}) injected`);
 
 // ── Cache-bust asset references in index.html ───────────
 const buildHash = Date.now().toString(36);

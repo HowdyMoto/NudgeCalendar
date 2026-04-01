@@ -692,6 +692,16 @@ html, body {
   min-width: 200px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
+@media (min-width: 768px) {
+  #settings-panel {
+    min-width: 300px;
+    padding: 24px 28px;
+    border-radius: 16px;
+  }
+  #settings-panel .settings-divider {
+    margin: 18px 0;
+  }
+}
 
 .settings-header {
   display: flex;
@@ -734,6 +744,12 @@ html, body {
   height: 1px;
   background: rgba(255, 255, 255, 0.06);
   margin: 14px 0;
+}
+
+.settings-version {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-align: center;
 }
 
 .toggle-group {
@@ -784,8 +800,16 @@ html, body {
 }
 #scale-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  cursor: pointer;
+}
+#scale-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
   border-radius: 50%;
   background: var(--text-dim);
   cursor: pointer;
