@@ -326,19 +326,24 @@ async function fetchEvents() {
 
 // Group overlapping timed events into clusters for side-by-side rendering.
 function buildOverlapClusters(timedEvents) {
+  // Use visual end (accounting for MIN_CARD_HEIGHT) so short events
+  // that visually overlap get grouped into side-by-side columns.
+  const minCardMs = (MIN_CARD_HEIGHT / PX_PER_MIN) * 60000;
   const clusters = [];
   let cluster = null;
 
   for (const ev of timedEvents) {
     const start = new Date(ev.start.dateTime).getTime();
     const end = new Date(ev.end.dateTime).getTime();
+    const visualEnd = Math.max(end, start + minCardMs);
 
-    if (!cluster || start >= cluster.clusterEnd) {
+    if (!cluster || start >= cluster.visualEnd) {
       if (cluster) clusters.push(cluster);
-      cluster = { events: [ev], clusterStart: start, clusterEnd: end };
+      cluster = { events: [ev], clusterStart: start, clusterEnd: end, visualEnd };
     } else {
       cluster.events.push(ev);
       cluster.clusterEnd = Math.max(cluster.clusterEnd, end);
+      cluster.visualEnd = Math.max(cluster.visualEnd, visualEnd);
     }
   }
   if (cluster) clusters.push(cluster);
