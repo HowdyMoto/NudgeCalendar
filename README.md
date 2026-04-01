@@ -2,7 +2,7 @@
 
 A PWA that makes sure you never miss a meeting. Connects to Google Calendar and shows your day in an Apple/Google Calendar-style view, with playful animated alerts that nudge you before, during, and at the start of each day.
 
-**Live app:** [https://howdymoto.github.io/Calendar/](https://howdymoto.github.io/Calendar/)
+**Live app:** [https://howdymoto.github.io/NudgeCalendar/](https://howdymoto.github.io/NudgeCalendar/)
 
 ## Features
 
@@ -33,7 +33,7 @@ A PWA that makes sure you never miss a meeting. Connects to Google Calendar and 
 
 ### Use the hosted version
 
-Visit [https://howdymoto.github.io/Calendar/](https://howdymoto.github.io/Calendar/) and sign in with your Google account.
+Visit [https://howdymoto.github.io/NudgeCalendar/](https://howdymoto.github.io/NudgeCalendar/) and sign in with your Google account.
 
 ### Run locally
 

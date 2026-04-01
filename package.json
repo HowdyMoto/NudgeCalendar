@@ -10,16 +10,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HowdyMoto/Calendar.git"
+    "url": "git+https://github.com/HowdyMoto/NudgeCalendar.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/HowdyMoto/Calendar/issues"
+    "url": "https://github.com/HowdyMoto/NudgeCalendar/issues"
   },
-  "homepage": "https://github.com/HowdyMoto/Calendar#readme",
+  "homepage": "https://github.com/HowdyMoto/NudgeCalendar#readme",
   "devDependencies": {
     "canvas": "^3.2.2"
   }
