@@ -106,8 +106,12 @@ html, body {
 .top-bar {
   display: flex;
   align-items: center;
-  padding: 12px 0 8px;
+  padding: 14px 0 12px;
   flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 #date-header {
