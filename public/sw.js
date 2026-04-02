@@ -1,8 +1,6 @@
-const CACHE = 'nudge-v1';
-const ASSETS = ['/', '/index.html', '/manifest.json'];
+const CACHE = 'nudge-v2';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
   self.skipWaiting();
 });
 
