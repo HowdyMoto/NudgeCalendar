@@ -4,6 +4,7 @@ import { readFileSync } from 'fs';
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
+  base: './',
   root: '.',
   publicDir: 'public',
   build: {
