@@ -42,9 +42,15 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:8080` — you'll see sample events immediately.
+Open `http://localhost:8080` — without a Google Client ID, the app runs in **demo mode** with sample events automatically.
 
-To connect your real Google Calendar, create a `.env` file with your Google Client ID (see [SETUP.md](SETUP.md)).
+To connect your real Google Calendar, create a `.env` file:
+
+```
+VITE_GOOGLE_CLIENT_ID=your-client-id-here
+```
+
+See [SETUP.md](SETUP.md) for how to get a Client ID.
 
 ## Desk Display Setup
 
