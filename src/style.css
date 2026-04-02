@@ -109,6 +109,20 @@ html, body {
   flex-shrink: 0;
 }
 
+.auth-credit {
+  position: absolute;
+  bottom: max(20px, var(--safe-bottom));
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  text-decoration: none;
+}
+.auth-credit:active {
+  color: var(--text-dim);
+}
+
 /* ── Calendar screen ─────────────────────────────────── */
 #calendar-screen {
   padding: var(--safe-top) max(16px, var(--safe-right)) var(--safe-bottom) max(16px, var(--safe-left));
