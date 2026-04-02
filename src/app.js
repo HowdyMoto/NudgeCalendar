@@ -1,8 +1,8 @@
 // ── Configuration ───────────────────────────────────────
 // Replace with your Google Cloud OAuth2 Client ID
 // Instructions: https://console.cloud.google.com/apis/credentials
-const APP_VERSION = '__APP_VERSION__';
-const CLIENT_ID = '__GOOGLE_CLIENT_ID__';
+const APP_VERSION = __APP_VERSION__;
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly https://www.googleapis.com/auth/directory.readonly https://www.googleapis.com/auth/tasks.readonly';
 const DISCOVERY_DOCS = [
   'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
@@ -1402,3 +1402,10 @@ if (DEMO_MODE) {
 }
 
 requestWakeLock();
+
+// Expose globals for inline onclick/onchange/oninput handlers
+window.handleAuth = handleAuth;
+window.handleLogout = handleLogout;
+window.toggleSettings = toggleSettings;
+window.setShowTasks = setShowTasks;
+window.setScale = setScale;

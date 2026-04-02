@@ -67,10 +67,18 @@ html, body {
   animation: ollie-continuous 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
-.auth-content p {
+.auth-tagline {
   color: var(--text-dim);
   font-size: 1rem;
+  margin-top: 16px;
+}
+
+.auth-desc {
+  color: var(--text-faint);
+  font-size: 0.9rem;
+  margin-top: 8px;
   margin-bottom: 40px;
+  line-height: 1.5;
 }
 
 #auth-btn {

@@ -13,7 +13,7 @@
   <meta name="theme-color" content="#0a0a0f">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="icon" href="favicon.ico" type="image/png">
+  <link rel="icon" href="/favicon.ico" type="image/png">
 
   <!-- Keep screen awake -->
   <meta http-equiv="refresh" content="300">
@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@500&display=swap">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
   <div id="app">
@@ -29,7 +29,10 @@
     <div id="auth-screen" class="screen">
       <div class="auth-content">
         <h1><span id="nudge-word">Nudge</span> Calendar</h1>
-        <p>A playful, glanceable calendar for your phone. Keeps upcoming meetings visible while you're deep in the zone — with animations that grab your attention when it's time to move.</p>
+        <p>A playful, glanceable calendar for your phone.
+          <br>
+          <br>
+          Keeps upcoming meetings visible while you're deep in the zone — with animations that grab your attention when it's time to move.</p>
         <button id="auth-btn" onclick="handleAuth()">
           <svg class="google-logo" viewBox="0 0 48 48" width="20" height="20">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -120,6 +123,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="/src/app.js"></script>
 </body>
 </html>

@@ -2,3 +2,6 @@
 .env
 dist/
 node_modules/
+public/icon-192.png
+public/icon-512.png
+public/favicon.ico
