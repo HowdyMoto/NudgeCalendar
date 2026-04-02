@@ -205,7 +205,7 @@ setInterval(() => {
   if (authScreen.classList.contains('hidden')) return;
   nudgeWord.classList.add('antsy');
   setTimeout(() => nudgeWord.classList.remove('antsy'), 3200);
-}, 5000);
+}, 12000);
 
 // ── Google API Init ─────────────────────────────────────
 function gapiLoaded() {
