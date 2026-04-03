@@ -772,6 +772,8 @@ html, body {
 
 /* ── Settings ────────────────────────────────────────── */
 #settings-btn {
+  position: relative;
+  z-index: 21;
   background: none;
   border: none;
   color: var(--text-faint);
@@ -835,7 +837,7 @@ html, body {
   cursor: pointer;
   border-radius: 6px;
   transition: color 0.2s;
-  display: flex;
+  display: none;
   align-items: center;
 }
 .settings-close:active { color: var(--text); }
