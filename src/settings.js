@@ -27,7 +27,7 @@ export function setShowTasks(on) {
   const toggle = document.getElementById('tasks-toggle');
   if (toggle) toggle.checked = on;
   setLastStructureKey('');
-  if (on && !DEMO_MODE && gapi?.client?.getToken()) {
+  if (on && !DEMO_MODE && typeof gapi !== 'undefined' && gapi.client?.getToken()) {
     fetchTasks();
   } else if (on && DEMO_MODE) {
     loadDemoTasks();

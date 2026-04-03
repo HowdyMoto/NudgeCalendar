@@ -301,18 +301,18 @@ html, body {
 }
 
 .organizer-avatar {
-  width: 1.8em;
-  height: 1.8em;
+  width: 2.2em;
+  height: 2.2em;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-dim);
-  font-size: 0.65em;
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.6em;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.02em;
   position: relative;
   overflow: hidden;
 }
@@ -372,10 +372,25 @@ html, body {
   margin-top: 0;
 }
 
+.event-card.expanded {
+  overflow: visible;
+  z-index: 10;
+}
+
 .event-card.expanded .card-details {
   max-height: 200px;
   opacity: 1;
-  margin-top: 0.5em;
+  margin-top: 0;
+  background: inherit;
+  color: var(--card-text, #ffffff);
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 0.5em 0.6em;
+  margin-left: -0.6em;
+  margin-right: -0.6em;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.event-card.expanded .card-details .detail-row {
+  color: var(--card-sub, rgba(255,255,255,0.75));
 }
 
 .event-card.expanded .event-title {
@@ -414,9 +429,9 @@ html, body {
   gap: 0.3em;
 }
 .event-card.compact-card .organizer-avatar {
-  width: 1.4em;
-  height: 1.4em;
-  font-size: 0.55em;
+  width: 1.8em;
+  height: 1.8em;
+  font-size: 0.5em;
 }
 
 /* ── Overlap columns ─────────────────────────────────── */
@@ -424,9 +439,9 @@ html, body {
   z-index: 1;
 }
 .event-card.overlap-col .organizer-avatar {
-  width: 1.4em;
-  height: 1.4em;
-  font-size: 0.55em;
+  width: 1.8em;
+  height: 1.8em;
+  font-size: 0.5em;
 }
 .event-card.overlap-col .event-title {
   font-size: 0.85em;

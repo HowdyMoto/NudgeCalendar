@@ -69,3 +69,7 @@ npm run build  # Production build to dist/
 ```
 
 Source files live in `src/`. The build step injects the Google Client ID and cache-busts assets into `dist/`.
+
+## Known Issues
+
+- **Attendee profile photos** — Google's People API only returns photos from your Contacts, not from people's Google profile pictures. Attendee avatars fall back to initials unless you've added a photo to their contact card. The profile photos you see in Gmail come from an internal API not available to third-party apps.

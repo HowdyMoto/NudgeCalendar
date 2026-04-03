@@ -30,6 +30,10 @@ Vanilla JS (no framework), Vite build, ES modules. All source is in `src/`:
 
 Static assets live in `public/` (copied as-is to dist). `index.html` is at the project root (Vite entry point).
 
+## Text Legibility
+
+Event cards can be any color the user sets in Google Calendar. Never hardcode text to white or dark — always use `urgencyTextColor()` from `colors.js`, which picks white or dark text based on the effective background luminance. Any UI that overlays a card (details panel, badges, countdowns) must inherit the card's text color via `--card-text` and `--card-sub` CSS variables. The avatar circle uses `rgba(0,0,0,0.25)` background to stay visible on both light and dark cards.
+
 ## Versioning
 
 Bump the version in `package.json` on every push:

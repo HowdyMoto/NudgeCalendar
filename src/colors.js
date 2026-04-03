@@ -49,5 +49,5 @@ export function urgencyTextColor(bgAlpha, r, g, b) {
 
   return whiteContrast > darkContrast
     ? { title: '#ffffff', sub: 'rgba(255,255,255,0.75)' }
-    : { title: '#1a1a2a', sub: '#2a2a3a' };
+    : { title: '#111111', sub: 'rgba(0,0,0,0.6)' };
 }

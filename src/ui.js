@@ -101,10 +101,17 @@ export async function requestWakeLock() {
   }
 }
 
+// Dismiss expanded cards when tapping outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.event-card')) {
+    document.querySelectorAll('.event-card.expanded').forEach(el => el.classList.remove('expanded'));
+  }
+});
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     requestWakeLock();
-    if (gapi?.client?.getToken()) {
+    if (typeof gapi !== 'undefined' && gapi.client?.getToken()) {
       fetchEvents().then(() => checkMorningBriefing());
     } else if (DEMO_MODE) {
       checkMorningBriefing();

@@ -262,12 +262,20 @@ export function renderEvents() {
         const txt = urgencyTextColor(bgA, r, g, b);
         titleColor = ` style="color: ${txt.title}"`;
         timeColor = ` style="color: ${txt.sub}"`;
-        cardStyle = `background: rgba(${r},${g},${b},${bgA.toFixed(3)});`;
+        // Blend card color with page background (#0a0a0f) at the urgency alpha
+        const oR = Math.round(10 + (r - 10) * bgA);
+        const oG = Math.round(10 + (g - 10) * bgA);
+        const oB = Math.round(15 + (b - 15) * bgA);
+        cardStyle = `background: rgb(${oR},${oG},${oB});--card-text:${txt.title};--card-sub:${txt.sub};`;
       } else {
+        // Current events: blend at 0.55 alpha
+        const oR = Math.round(10 + (r - 10) * 0.55);
+        const oG = Math.round(10 + (g - 10) * 0.55);
+        const oB = Math.round(15 + (b - 15) * 0.55);
         const txt = urgencyTextColor(0.55, r, g, b);
         titleColor = ` style="color: ${txt.title}"`;
         timeColor = ` style="color: ${txt.sub}"`;
-        cardStyle = `background: rgba(${r},${g},${b},0.55);`;
+        cardStyle = `background: rgb(${oR},${oG},${oB});--card-text:${txt.title};--card-sub:${txt.sub};`;
       }
     }
 
@@ -351,7 +359,8 @@ export function renderEvents() {
     });
 
     column.querySelectorAll('[data-expandable]').forEach(el => {
-      el.addEventListener('click', () => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
         el.classList.toggle('expanded');
       });
     });

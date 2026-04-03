@@ -4,9 +4,7 @@ import { dismissedEvents } from './state.js';
 import { renderEvents } from './render.js';
 
 const positiveEmojis = [
-  '👍', '🚀', '💪', '🔥', '⚡', '🎯', '🫡', '🤘', '✌️',
-  '😎', '🥳', '🫶', '💅', '🦾', '👊', '🤙', '🙌',
-  '🎸', '🏆', '💥', '✨', '🤌', '🫰', '🧠', '💯',
+  '👍', '🤘', '✌️', '👊',  '🤙', '🙌', '🤌',
 ];
 
 export function spawnThumbsUp(x, y) {
@@ -56,14 +54,20 @@ export function dismissEvent(key, e) {
 
     if (e) spawnThumbsUp(e.clientX, e.clientY);
 
+    const cardId = card.id;
     card.classList.add('tickled');
-    const fallback = setTimeout(() => renderEvents(), 500);
+    const expand = () => {
+      const el = document.getElementById(cardId);
+      if (el) el.classList.add('expanded');
+    };
+    const fallback = setTimeout(() => { renderEvents(); expand(); }, 500);
     card.addEventListener('transitionend', () => {
       card.classList.remove('tickled');
       card.classList.add('tickled-out');
       card.addEventListener('transitionend', () => {
         clearTimeout(fallback);
         renderEvents();
+        expand();
       }, { once: true });
     }, { once: true });
   } else {
