@@ -8,7 +8,7 @@ import {
   setLastStructureKey, setLastGutterKey,
 } from './state.js';
 import { minsOf, eventKey, escapeHtml, formatCountdown, checkMilestone, getInitials } from './utils.js';
-import { getEventColor, urgencyBgAlpha, urgencyTextColor } from './colors.js';
+import { getEventColor, urgencyBgAlpha, urgencyTextColor, blendWithBg } from './colors.js';
 import { hexToRgb } from './utils.js';
 import { dismissEvent } from './animations.js';
 import { pickAvatarPerson } from './api.js';
@@ -78,22 +78,20 @@ function timeToY(date) {
 }
 
 function buildOverlapClusters(timedEvents) {
-  const minCardMs = (MIN_CARD_HEIGHT / PX_PER_MIN) * 60000;
   const clusters = [];
   let cluster = null;
 
   for (const ev of timedEvents) {
     const start = new Date(ev.start.dateTime).getTime();
     const end = new Date(ev.end.dateTime).getTime();
-    const visualEnd = Math.max(end, start + minCardMs);
 
-    if (!cluster || start >= cluster.visualEnd) {
+    // Cluster based on actual time overlap, not visual card height
+    if (!cluster || start >= cluster.clusterEnd) {
       if (cluster) clusters.push(cluster);
-      cluster = { events: [ev], clusterStart: start, clusterEnd: end, visualEnd };
+      cluster = { events: [ev], clusterStart: start, clusterEnd: end };
     } else {
       cluster.events.push(ev);
       cluster.clusterEnd = Math.max(cluster.clusterEnd, end);
-      cluster.visualEnd = Math.max(cluster.visualEnd, visualEnd);
     }
   }
   if (cluster) clusters.push(cluster);
@@ -181,6 +179,8 @@ export function renderEvents() {
     }
   });
 
+  let prevVisualBottom = 0;
+
   const hasAntsyNext = cardDataList.some(cd => {
     const s = new Date(cd.event.start.dateTime);
     const m = (s - now) / 60000;
@@ -235,8 +235,15 @@ export function renderEvents() {
       }
     }
 
-    const topPx = timeToY(start);
+    let topPx = timeToY(start);
     const heightPx = Math.max(MIN_CARD_HEIGHT, durationMins * PX_PER_MIN);
+    // Push single-column cards down if min-height causes visual overlap
+    if (cd.totalColumns <= 1 && prevVisualBottom > topPx + 1) {
+      topPx = prevVisualBottom + 2;
+    }
+    if (cd.totalColumns <= 1) {
+      prevVisualBottom = Math.max(prevVisualBottom, topPx + heightPx);
+    }
     const isCompact = heightPx <= 56;
     const gap = 4;
     const colWidthPct = (100 / cd.totalColumns).toFixed(2);
@@ -252,7 +259,7 @@ export function renderEvents() {
     let timeColor = '';
     let titleColor = '';
 
-    if (state === 'future' || state === 'current') {
+    if (state === 'future' || state === 'current' || state === 'past') {
       const rgb = hexToRgb(getEventColor(event));
       const r = rgb ? rgb.r : 74;
       const g = rgb ? rgb.g : 158;
@@ -260,22 +267,19 @@ export function renderEvents() {
       if (state === 'future') {
         const bgA = urgencyBgAlpha(minsUntil);
         const txt = urgencyTextColor(bgA, r, g, b);
+        const o = blendWithBg(r, g, b, bgA);
         titleColor = ` style="color: ${txt.title}"`;
         timeColor = ` style="color: ${txt.sub}"`;
-        // Blend card color with page background (#0a0a0f) at the urgency alpha
-        const oR = Math.round(10 + (r - 10) * bgA);
-        const oG = Math.round(10 + (g - 10) * bgA);
-        const oB = Math.round(15 + (b - 15) * bgA);
-        cardStyle = `background: rgb(${oR},${oG},${oB});--card-text:${txt.title};--card-sub:${txt.sub};`;
-      } else {
-        // Current events: blend at 0.55 alpha
-        const oR = Math.round(10 + (r - 10) * 0.55);
-        const oG = Math.round(10 + (g - 10) * 0.55);
-        const oB = Math.round(15 + (b - 15) * 0.55);
+        cardStyle = `background: rgb(${o.r},${o.g},${o.b});--card-text:${txt.title};--card-sub:${txt.sub};`;
+      } else if (state === 'current') {
         const txt = urgencyTextColor(0.55, r, g, b);
+        const o = blendWithBg(r, g, b, 0.55);
         titleColor = ` style="color: ${txt.title}"`;
         timeColor = ` style="color: ${txt.sub}"`;
-        cardStyle = `background: rgb(${oR},${oG},${oB});--card-text:${txt.title};--card-sub:${txt.sub};`;
+        cardStyle = `background: rgb(${o.r},${o.g},${o.b});--card-text:${txt.title};--card-sub:${txt.sub};`;
+      } else {
+        const o = blendWithBg(r, g, b, 0.2);
+        cardStyle = `background: rgb(${o.r},${o.g},${o.b});`;
       }
     }
 

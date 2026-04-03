@@ -10,8 +10,7 @@
   --accent: #6e9fff;
   --accent-glow: rgba(110, 159, 255, 0.15);
   --upcoming: #f5a623;
-  --past: #2a2a35;
-  --past-text: #4a4a55;
+
   --ur: 74;
   --ug: 158;
   --ub: 255;
@@ -298,8 +297,7 @@ html, body {
   right: 4px;
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 0.5em 0.6em;
-  border: none;
+  padding: 0.35em 0.6em;
   border: none;
   transition: background 0.4s ease, box-shadow 0.4s ease;
   z-index: 1;
@@ -312,16 +310,16 @@ html, body {
 .card-summary {
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: 0.4em;
 }
 
 .organizer-avatar {
-  width: 2.2em;
-  height: 2.2em;
+  width: 2em;
+  height: 2em;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.25);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 0.6em;
+  font-size: 0.55em;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -349,7 +347,7 @@ html, body {
 }
 
 .event-time {
-  font-size: 0.78em;
+  font-size: 0.72em;
   font-weight: 500;
   color: var(--text-dim);
   letter-spacing: 0.01em;
@@ -359,9 +357,9 @@ html, body {
 }
 
 .event-title {
-  font-size: 0.95em;
+  font-size: 0.9em;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -467,11 +465,10 @@ html, body {
 
 /* ── Past events ─────────────────────────────────────── */
 .event-card.past {
-  background: transparent;
-  opacity: 0.4;
+  opacity: 0.6;
 }
-.event-card.past .event-title { color: var(--past-text); }
-.event-card.past .event-time  { color: var(--past-text); }
+.event-card.past .event-title { color: var(--text-faint); }
+.event-card.past .event-time  { color: var(--text-faint); }
 
 /* ── Meeting done celebration ────────────────────────── */
 .event-card.meeting-done {
@@ -483,7 +480,7 @@ html, body {
   24%  { transform: scale(1) translateY(0); }
   32%  { transform: scale(1.02) translateY(-2px); }
   44%  { transform: scale(1); }
-  100% { transform: scale(1); opacity: 0.4; border-color: transparent; }
+  100% { transform: scale(1); opacity: 0.6; border-color: transparent; }
 }
 
 /* ── Current / in-progress ───────────────────────────── */

@@ -32,17 +32,24 @@ function luminance(r, g, b) {
   return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
 
-// Background opacity: 1.0 at 0 min, fades to 0 at ~120 min
+// Background opacity: 1.0 at 0 min, fades toward 0.15 for distant events
 export function urgencyBgAlpha(minsUntil) {
   if (minsUntil <= 0) return 1;
-  return Math.max(0, Math.exp(-0.02 * minsUntil));
+  return Math.max(0.15, Math.exp(-0.02 * minsUntil));
+}
+
+// Blend a color with the page background (#0a0a0f) at a given alpha
+export function blendWithBg(r, g, b, alpha) {
+  return {
+    r: Math.round(10 + (r - 10) * alpha),
+    g: Math.round(10 + (g - 10) * alpha),
+    b: Math.round(15 + (b - 15) * alpha),
+  };
 }
 
 export function urgencyTextColor(bgAlpha, r, g, b) {
-  const effR = Math.round(10 + (r - 10) * bgAlpha);
-  const effG = Math.round(10 + (g - 10) * bgAlpha);
-  const effB = Math.round(15 + (b - 15) * bgAlpha);
-  const bgLum = luminance(effR, effG, effB);
+  const eff = blendWithBg(r, g, b, bgAlpha);
+  const bgLum = luminance(eff.r, eff.g, eff.b);
 
   const whiteContrast = (1 + 0.05) / (bgLum + 0.05);
   const darkContrast = (bgLum + 0.05) / (0.01 + 0.05);
