@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initShowTasks();
 });
 
-// Set version
-const verEl = document.getElementById('app-version');
-if (verEl) verEl.textContent = `v${APP_VERSION}`;
+// Set version in settings and auth screen
+document.querySelectorAll('#app-version, #auth-version').forEach(el => {
+  el.textContent = `v${APP_VERSION}`;
+});

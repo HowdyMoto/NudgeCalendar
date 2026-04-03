@@ -108,12 +108,21 @@ html, body {
   flex-shrink: 0;
 }
 
-.auth-credit {
+.auth-footer {
   position: absolute;
   bottom: max(20px, var(--safe-bottom));
   left: 0;
   right: 0;
   text-align: center;
+}
+
+.auth-version {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.auth-credit {
   font-size: 0.75rem;
   color: var(--text-faint);
   text-decoration: none;
