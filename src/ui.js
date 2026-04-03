@@ -113,6 +113,13 @@ document.addEventListener('visibilitychange', () => {
     requestWakeLock();
     if (typeof gapi !== 'undefined' && gapi.client?.getToken()) {
       fetchEvents().then(() => checkMorningBriefing());
+    } else if (!DEMO_MODE && typeof gapi !== 'undefined') {
+      // Token gone (expired + failed reauth) — try to restore from storage or re-prompt
+      const stored = localStorage.getItem('gapi_token');
+      if (stored) {
+        gapi.client.setToken(JSON.parse(stored));
+        fetchEvents().then(() => checkMorningBriefing());
+      }
     } else if (DEMO_MODE) {
       checkMorningBriefing();
     }

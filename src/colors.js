@@ -47,7 +47,8 @@ export function urgencyTextColor(bgAlpha, r, g, b) {
   const whiteContrast = (1 + 0.05) / (bgLum + 0.05);
   const darkContrast = (bgLum + 0.05) / (0.01 + 0.05);
 
-  return whiteContrast > darkContrast
-    ? { title: '#ffffff', sub: 'rgba(255,255,255,0.75)' }
-    : { title: '#111111', sub: 'rgba(0,0,0,0.6)' };
+  // Bias toward white text — on a dark-themed app, white is almost always more readable
+  return whiteContrast > darkContrast * 0.6
+    ? { title: '#ffffff', sub: 'rgba(255,255,255,0.85)' }
+    : { title: '#111111', sub: 'rgba(0,0,0,0.65)' };
 }

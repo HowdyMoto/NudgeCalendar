@@ -39,9 +39,15 @@ export function hexToRgb(hex) {
 
 export function getInitials(name) {
   if (!name) return '';
-  if (name.includes('@')) name = name.split('@')[0].replace(/[._]/g, ' ');
-  const parts = name.trim().split(/\s+/);
+  if (name.includes('@')) {
+    name = name.split('@')[0]
+      .replace(/[._-]/g, ' ')                      // split on dots, underscores, hyphens
+      .replace(/([a-z])([A-Z])/g, '$1 $2')          // split camelCase
+      .replace(/(\d+)/g, ' $1 ');                    // split around numbers
+  }
+  const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // Single word — try to find a natural split (e.g. "wrightbagwell" → no luck, just take first 2)
   return (parts[0] || '').slice(0, 2).toUpperCase();
 }
 

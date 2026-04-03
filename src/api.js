@@ -161,14 +161,14 @@ export async function fetchEvents(isRetry) {
     if (emails.length) fetchPhotos([...new Set(emails)]);
   } catch (err) {
     console.error('Failed to fetch events:', err);
-    if (err.status === 401 && !isRetry) {
+    if (err.status === 401) {
+      // Token expired — try silent reauth
       const ok = await silentReauth();
       if (ok) return fetchEvents(true);
+      // Silent reauth failed — don't boot to login, just clear token
+      // and let the next user interaction or visibility change retry
+      console.warn('Token expired, silent reauth failed — will retry on next refresh');
       localStorage.removeItem('gapi_token');
-      showScreen(authScreen);
-    } else if (err.status === 401) {
-      localStorage.removeItem('gapi_token');
-      showScreen(authScreen);
     }
   }
 }
